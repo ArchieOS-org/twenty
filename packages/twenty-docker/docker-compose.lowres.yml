@@ -1,0 +1,73 @@
+# Resource-constrained override for Twenty CRM on M1 Studio
+# Apply with: docker compose -f docker-compose.yml -f docker-compose.lowres.yml up -d
+# Or copy to docker-compose.override.yml on M1 Studio for auto-application
+
+services:
+  server:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 256M
+    # Low CPU priority (19 = lowest, -20 = highest)
+    cap_add:
+      - SYS_NICE
+    # Run with nice 19 via entrypoint wrapper below
+    # We use cpu_shares instead for lower priority
+    cpu_shares: 50  # default is 1024, so 50 = ~5% relative share
+    mem_limit: 512m
+    memswap_limit: 512m  # no swap
+
+  worker:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 384M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    cpu_shares: 30
+    mem_limit: 384m
+    memswap_limit: 384m
+
+  db:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.4"
+          memory: 384M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    cpu_shares: 50
+    mem_limit: 384m
+    memswap_limit: 384m
+    # Minimal Postgres config
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c effective_cache_size=128MB
+      -c maintenance_work_mem=16MB
+      -c wal_buffers=2MB
+      -c max_connections=20
+      -c work_mem=2MB
+      -c max_wal_size=256MB
+      -c min_wal_size=64MB
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+    cpu_shares: 20
+    mem_limit: 128m
+    memswap_limit: 128m
+    command: ["--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--save", ""]
