@@ -412,7 +412,7 @@ export const CallStationPage = () => {
     const abortController = new AbortController();
 
     const checkBridgeHealth = async () => {
-      const isHealthy = await isCallBridgeHealthy(abortController.signal);
+      const isHealthy = await isCallBridgeHealthy();
 
       if (!abortController.signal.aborted && !isHealthy) {
         setIsBridgeOffline(true);
@@ -685,9 +685,7 @@ export const CallStationPage = () => {
               <StyledActions>
                 {!callState.active ? (
                   <MainButton
-                    title={
-                      isBridgeOffline ? CALL_BRIDGE_OFFLINE_COPY : 'Dial'
-                    }
+                    title={isBridgeOffline ? CALL_BRIDGE_OFFLINE_COPY : 'Dial'}
                     Icon={IconPhone}
                     onClick={handleStartCall}
                     disabled={!currentPerson.phones?.primaryPhoneNumber}

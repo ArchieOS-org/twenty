@@ -8,14 +8,9 @@ type StartCallOnBridgeInput = {
   brokerage: string;
 };
 
-export const isCallBridgeHealthy = async (
-  abortSignal?: AbortSignal,
-): Promise<boolean> => {
+export const isCallBridgeHealthy = async (): Promise<boolean> => {
   try {
-    const response = await fetch(
-      `${BRIDGE_BASE_URL}/health`,
-      abortSignal ? { signal: abortSignal } : undefined,
-    );
+    const response = await fetch(`${BRIDGE_BASE_URL}/health`);
 
     return response.ok;
   } catch {
