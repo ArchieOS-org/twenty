@@ -1,30 +1,20 @@
 import { styled } from '@linaria/react';
-import { useCallback, useEffect, useState } from 'react';
-import { IconPhone, IconBrandLinkedin } from 'twenty-ui/icon';
-import { MainButton } from 'twenty-ui/input';
+import { useEffect, useState } from 'react';
+import { IconPhone, IconBrandLinkedin, IconCircle } from 'twenty-ui/icon';
+import { MainButton, Chip } from 'twenty-ui/input';
 import { H2Title } from 'twenty-ui/typography';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import {
   AnimatedPlaceholderEmptyContainer,
   AnimatedPlaceholderEmptyTextContainer,
   AnimatedPlaceholderEmptyTitle,
-  AnimatedPlaceholderEmptySubTitle,
 } from 'twenty-ui/feedback';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
-import { TabList } from '@/ui/layout/tab-list/components/TabList';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
-
-type QueueItem = {
-  name: string;
-  phone: string;
-  brokerage: string;
-  notes?: string;
-  done: boolean;
-};
 
 type Person = {
   id: string;
@@ -32,16 +22,24 @@ type Person = {
   phones: { primaryPhoneNumber?: string; additionalPhones?: string[] };
   emails: { primaryEmail?: string };
   company?: { name?: string };
-  outreachStatus?: string;
-  lastTouch?: string;
-  notes?: string;
-  tier?: string;
+  position?: string;
   linkedinLink?: { primaryLinkUrl?: string };
 };
 
+type CallRecord = {
+  id: string;
+  title: string;
+  body?: string;
+  createdAt: string;
+};
+
+type CallState = {
+  active: boolean;
+  startTime?: number;
+  person?: Person;
+};
+
 const BRIDGE_BASE_URL = 'http://127.0.0.1:8787';
-const QUEUE_PATH =
-  '/Users/noahdeskin/.hermes/data/austin-realtors/call_queue.csv';
 
 const DISPOSITION_MAPPING: Record<string, string> = {
   Connected: 'REPLIED',
@@ -51,58 +49,6 @@ const DISPOSITION_MAPPING: Record<string, string> = {
   Busy: 'BUSY',
 };
 
-const normalizePhone = (phone: string | undefined): string => {
-  if (!phone) return '';
-  return phone.replace(/\D/g, '');
-};
-
-const normalizeName = (name: string | undefined): string => {
-  if (!name) return '';
-  return name.toLowerCase().trim();
-};
-
-const findPersonForContact = (
-  contact: QueueItem,
-  people: Person[],
-): Person | null => {
-  const normalizedQueuePhone = normalizePhone(contact.phone);
-
-  if (normalizedQueuePhone) {
-    const personByPhone = people.find((p) => {
-      const normalizedPrimaryPhone = normalizePhone(
-        p.phones?.primaryPhoneNumber,
-      );
-      if (normalizedPrimaryPhone === normalizedQueuePhone) {
-        return true;
-      }
-
-      if (p.phones?.additionalPhones) {
-        return p.phones.additionalPhones.some(
-          (phone) => normalizePhone(phone) === normalizedQueuePhone,
-        );
-      }
-
-      return false;
-    });
-
-    if (personByPhone) return personByPhone;
-  }
-
-  const normalizedQueueName = normalizeName(contact.name);
-  if (normalizedQueueName) {
-    const personByName = people.find((p) => {
-      const fullName = `${p.name.firstName} ${p.name.lastName}`
-        .toLowerCase()
-        .trim();
-      return fullName === normalizedQueueName;
-    });
-
-    if (personByName) return personByName;
-  }
-
-  return null;
-};
-
 const StyledContent = styled.div`
   display: flex;
   flex-direction: column;
@@ -110,16 +56,48 @@ const StyledContent = styled.div`
   padding: ${themeCssVariables.spacing[6]} ${themeCssVariables.spacing[8]};
 `;
 
+const StyledFilters = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: ${themeCssVariables.spacing[2]};
+`;
+
+const StyledMainLayout = styled.div`
+  display: grid;
+  gap: ${themeCssVariables.spacing[6]};
+  grid-template-columns: 2fr 1fr;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
 const StyledPersonPanel = styled.div`
   background: ${themeCssVariables.background.secondary};
   border: 1px solid ${themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.md};
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[4]};
   padding: ${themeCssVariables.spacing[6]};
+`;
+
+const StyledCallingBanner = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.color.blue};
+  border-radius: ${themeCssVariables.border.radius.pill};
+  color: ${themeCssVariables.font.color.inverted};
+  display: flex;
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  gap: ${themeCssVariables.spacing[2]};
+  margin-bottom: ${themeCssVariables.spacing[2]};
+  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[4]};
+  width: fit-content;
 `;
 
 const StyledPersonHeader = styled.div`
   border-bottom: 1px solid ${themeCssVariables.border.color.light};
-  margin-bottom: ${themeCssVariables.spacing[4]};
   padding-bottom: ${themeCssVariables.spacing[4]};
 `;
 
@@ -129,18 +107,10 @@ const StyledPersonPhone = styled.div`
   margin-top: ${themeCssVariables.spacing[2]};
 `;
 
-const StyledNoCrmMatch = styled.div`
-  color: ${themeCssVariables.font.color.tertiary};
-  font-size: ${themeCssVariables.font.size.sm};
-  font-style: italic;
-  margin-top: ${themeCssVariables.spacing[1]};
-`;
-
 const StyledFieldRow = styled.div`
   display: grid;
   gap: ${themeCssVariables.spacing[4]};
   grid-template-columns: 1fr 1fr;
-  margin-bottom: ${themeCssVariables.spacing[3]};
 `;
 
 const StyledField = styled.div`
@@ -160,15 +130,11 @@ const StyledFieldValue = styled.div`
   font-size: ${themeCssVariables.font.size.md};
 `;
 
-const StyledNotesField = styled.div`
-  margin-top: ${themeCssVariables.spacing[2]};
-`;
-
 const StyledSecondaryFields = styled.div`
   border-top: 1px solid ${themeCssVariables.border.color.light};
   display: flex;
-  gap: ${themeCssVariables.spacing[4]};
-  margin-top: ${themeCssVariables.spacing[4]};
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[2]};
   padding-top: ${themeCssVariables.spacing[4]};
 `;
 
@@ -186,13 +152,56 @@ const StyledLinkedInLink = styled.a`
 `;
 
 const StyledActions = styled.div`
+  border-top: 1px solid ${themeCssVariables.border.color.light};
   display: flex;
+  flex-wrap: wrap;
   gap: ${themeCssVariables.spacing[3]};
-  margin-top: ${themeCssVariables.spacing[6]};
+  padding-top: ${themeCssVariables.spacing[4]};
 `;
 
-const StyledQueueSection = styled.div`
-  margin-top: ${themeCssVariables.spacing[4]};
+const StyledCallsSection = styled.div`
+  border-top: 1px solid ${themeCssVariables.border.color.light};
+  padding-top: ${themeCssVariables.spacing[4]};
+`;
+
+const StyledCallsSectionTitle = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  margin-bottom: ${themeCssVariables.spacing[3]};
+`;
+
+const StyledCallItem = styled.div`
+  border-bottom: 1px solid ${themeCssVariables.border.color.light};
+  padding: ${themeCssVariables.spacing[2]} 0;
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const StyledCallDisposition = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+`;
+
+const StyledCallTranscript = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
+  margin-top: ${themeCssVariables.spacing[1]};
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const StyledQueuePanel = styled.div`
+  background: ${themeCssVariables.background.secondary};
+  border: 1px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.md};
+  max-height: 600px;
+  overflow-y: auto;
+  padding: ${themeCssVariables.spacing[4]};
 `;
 
 const StyledQueueHeader = styled.div`
@@ -208,13 +217,19 @@ const StyledQueueList = styled.div`
   gap: ${themeCssVariables.spacing[1]};
 `;
 
-const StyledQueueItem = styled.div<{ isDone: boolean }>`
-  color: ${({ isDone }) =>
-    isDone
-      ? themeCssVariables.font.color.tertiary
-      : themeCssVariables.font.color.secondary};
-  cursor: ${({ isDone }) => (isDone ? 'default' : 'pointer')};
+const StyledQueueItem = styled.div<{ isDone: boolean; isActive: boolean }>`
+  color: ${({ isDone, isActive }) =>
+    isActive
+      ? themeCssVariables.font.color.primary
+      : isDone
+        ? themeCssVariables.font.color.tertiary
+        : themeCssVariables.font.color.secondary};
+  cursor: pointer;
   font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${({ isActive }) =>
+    isActive
+      ? themeCssVariables.font.weight.medium
+      : themeCssVariables.font.weight.regular};
   opacity: ${({ isDone }) => (isDone ? 0.4 : 1)};
   padding: ${themeCssVariables.spacing[2]};
   text-decoration: ${({ isDone }) => (isDone ? 'line-through' : 'none')};
@@ -228,102 +243,120 @@ const StyledQueueItem = styled.div<{ isDone: boolean }>`
 `;
 
 export const CallStationPage = () => {
-  const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>('A - Talk first');
-  const [currentContact, setCurrentContact] = useState<QueueItem | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<string>('has-phone');
   const [currentPerson, setCurrentPerson] = useState<Person | null>(null);
-  const [isCallActive, setIsCallActive] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [callState, setCallState] = useState<CallState>({ active: false });
+  const [callTimer, setCallTimer] = useState<number>(0);
+  const [completedCallIds, setCompletedCallIds] = useState<Set<string>>(
+    new Set(),
+  );
 
-  const { records: people } = useFindManyRecords<Person>({
-    objectNameSingular: CoreObjectNameSingular.Person,
-    filter: {},
+  const { records: allPeople, loading: loadingPeople } =
+    useFindManyRecords<Person>({
+      objectNameSingular: CoreObjectNameSingular.Person,
+      filter: {},
+      recordGqlFields: {
+        id: true,
+        name: true,
+        phones: true,
+        emails: true,
+        company: true,
+        position: true,
+        linkedinLink: true,
+      },
+    });
+
+  const { records: callNotes } = useFindManyRecords<CallRecord>({
+    objectNameSingular: CoreObjectNameSingular.Note,
+    filter: currentPerson
+      ? {
+          title: {
+            ilike: '%Call:%',
+          },
+        }
+      : undefined,
     recordGqlFields: {
       id: true,
-      name: true,
-      phones: true,
-      emails: true,
-      company: true,
-      outreachStatus: true,
-      lastTouch: true,
-      notes: true,
-      tier: true,
-      linkedinLink: true,
+      title: true,
+      body: true,
+      createdAt: true,
     },
+    skip: !currentPerson,
   });
 
-  const fetchQueue = async () => {
-    try {
-      const response = await fetch(`${BRIDGE_BASE_URL}/queue/list`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queue: QUEUE_PATH }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch queue');
-      }
-
-      const data = await response.json();
-      setQueue(data.queue || []);
-      setIsLoading(false);
-    } catch {
-      setIsLoading(false);
+  const filteredPeople = allPeople.filter((person) => {
+    if (selectedFilter === 'has-phone') {
+      return !!person.phones?.primaryPhoneNumber;
     }
-  };
+    if (selectedFilter === 'emailed') {
+      return !!person.emails?.primaryEmail;
+    }
+    if (selectedFilter === 'solo') {
+      return true;
+    }
+    return true;
+  });
 
-  useEffect(() => {
-    fetchQueue();
-    const interval = setInterval(fetchQueue, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const filterQueueByGroup = (items: QueueItem[]): QueueItem[] => {
-    return items.filter((item) => {
-      const itemNotes = item.notes?.trim() || '';
-      return itemNotes === selectedGroup;
-    });
-  };
-
-  const filteredQueue = filterQueueByGroup(queue);
-  const notDoneFilteredQueue = filteredQueue.filter((item) => !item.done);
-
-  const groupTabs = [
-    { id: 'A - Talk first', title: 'A' },
-    { id: 'B - Backup', title: 'B' },
-    { id: 'Team member', title: 'Team' },
+  const filters = [
+    { id: 'solo', label: `Solo (${allPeople.length})` },
+    {
+      id: 'emailed',
+      label: `Emailed (${allPeople.filter((p) => p.emails?.primaryEmail).length})`,
+    },
+    {
+      id: 'has-phone',
+      label: `Has phone (${allPeople.filter((p) => p.phones?.primaryPhoneNumber).length})`,
+    },
   ];
 
   useEffect(() => {
-    if (notDoneFilteredQueue.length > 0 && !currentContact) {
-      const nextContact = notDoneFilteredQueue[0];
-      setCurrentContact(nextContact);
-      setCurrentPerson(findPersonForContact(nextContact, people));
+    if (filteredPeople.length > 0 && !currentPerson) {
+      const firstUncontacted = filteredPeople.find(
+        (p) => !completedCallIds.has(p.id),
+      );
+      setCurrentPerson(firstUncontacted || filteredPeople[0]);
     }
-  }, [notDoneFilteredQueue, currentContact, people]);
+  }, [filteredPeople, currentPerson, completedCallIds]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | undefined;
+    if (callState.active && callState.startTime) {
+      interval = setInterval(() => {
+        setCallTimer(Math.floor((Date.now() - callState.startTime!) / 1000));
+      }, 1000);
+    }
+    return () => {
+      if (interval !== undefined) clearInterval(interval);
+    };
+  }, [callState.active, callState.startTime]);
 
   const handleStartCall = async () => {
-    if (!currentContact) return;
+    if (!currentPerson?.phones?.primaryPhoneNumber) return;
 
     try {
       await fetch(`${BRIDGE_BASE_URL}/call/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: currentContact.phone,
-          name: currentContact.name,
-          brokerage: currentContact.brokerage,
+          phone: currentPerson.phones.primaryPhoneNumber,
+          name: `${currentPerson.name.firstName} ${currentPerson.name.lastName}`,
+          brokerage: currentPerson.company?.name || '',
         }),
       });
 
-      setIsCallActive(true);
+      setCallState({
+        active: true,
+        startTime: Date.now(),
+        person: currentPerson,
+      });
+      setCallTimer(0);
     } catch {
       // Silently handle error
     }
   };
 
   const handleFinishCall = async (dispositionLabel: string) => {
-    if (!currentContact) return;
+    if (!callState.person) return;
 
     const disposition =
       DISPOSITION_MAPPING[dispositionLabel] || dispositionLabel;
@@ -334,48 +367,44 @@ export const CallStationPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           disposition,
-          notes: currentContact.notes || '',
+          notes: `Call: ${dispositionLabel}`,
         }),
       });
 
-      setIsCallActive(false);
-      await fetchQueue();
+      setCallState({ active: false });
+      setCallTimer(0);
+      setCompletedCallIds((prev) => new Set(prev).add(callState.person!.id));
 
-      const updatedNotDoneQueue = notDoneFilteredQueue.filter(
-        (item) => item.phone !== currentContact.phone,
+      const nextPerson = filteredPeople.find(
+        (p) =>
+          p.id !== callState.person!.id &&
+          !completedCallIds.has(p.id) &&
+          !completedCallIds.has(p.id),
       );
-      if (updatedNotDoneQueue.length > 0) {
-        const nextContact = updatedNotDoneQueue[0];
-        setCurrentContact(nextContact);
-        setCurrentPerson(findPersonForContact(nextContact, people));
-      } else {
-        setCurrentContact(null);
-        setCurrentPerson(null);
+
+      if (nextPerson) {
+        setCurrentPerson(nextPerson);
       }
     } catch {
       // Silently handle error
     }
   };
 
-  const handleQueueItemClick = (item: QueueItem) => {
-    if (!item.done) {
-      setCurrentContact(item);
-      setCurrentPerson(findPersonForContact(item, people));
-      setIsCallActive(false);
-    }
+  const handlePersonClick = (person: Person) => {
+    setCurrentPerson(person);
+    setCallState({ active: false });
+    setCallTimer(0);
   };
 
-  const handleGroupChange = useCallback((groupId: string) => {
-    setSelectedGroup(groupId);
-    setCurrentContact(null);
-    setCurrentPerson(null);
-    setIsCallActive(false);
-  }, []);
+  const formatTimer = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
-  const notDoneCount = notDoneFilteredQueue.length;
   const displayName = currentPerson
     ? `${currentPerson.name.firstName} ${currentPerson.name.lastName}`
-    : currentContact?.name || '';
+    : '';
 
   const hasSecondaryFields =
     !!currentPerson?.linkedinLink?.primaryLinkUrl ||
@@ -387,91 +416,72 @@ export const CallStationPage = () => {
       <PageTitle title="Call Station" />
       <PageHeader title="Call Station" Icon={IconPhone} />
       <StyledContent>
-        <TabList
-          tabs={groupTabs}
-          componentInstanceId="call-station-groups"
-          behaveAsLinks={false}
-          onChangeTab={handleGroupChange}
-        />
+        <StyledFilters>
+          {filters.map((filter) => (
+            <Chip
+              key={filter.id}
+              label={filter.label}
+              variant={selectedFilter === filter.id ? 'highlighted' : 'regular'}
+              onClick={() => setSelectedFilter(filter.id)}
+            />
+          ))}
+        </StyledFilters>
 
-        {isLoading ? (
+        {loadingPeople ? (
           <AnimatedPlaceholderEmptyContainer>
             <AnimatedPlaceholderEmptyTextContainer>
               <AnimatedPlaceholderEmptyTitle>
-                Loading queue...
+                Loading people...
               </AnimatedPlaceholderEmptyTitle>
             </AnimatedPlaceholderEmptyTextContainer>
           </AnimatedPlaceholderEmptyContainer>
-        ) : !currentContact ? (
+        ) : !currentPerson ? (
           <AnimatedPlaceholderEmptyContainer>
             <AnimatedPlaceholderEmptyTextContainer>
               <AnimatedPlaceholderEmptyTitle>
-                No contacts
+                No people found
               </AnimatedPlaceholderEmptyTitle>
-              <AnimatedPlaceholderEmptySubTitle>
-                This group has no pending calls
-              </AnimatedPlaceholderEmptySubTitle>
             </AnimatedPlaceholderEmptyTextContainer>
           </AnimatedPlaceholderEmptyContainer>
         ) : (
-          <>
+          <StyledMainLayout>
             <StyledPersonPanel>
+              {callState.active && (
+                <StyledCallingBanner>
+                  <IconCircle size={12} />
+                  Calling · recording · {formatTimer(callTimer)}
+                </StyledCallingBanner>
+              )}
+
               <StyledPersonHeader>
                 <H2Title title={displayName} />
-                <StyledPersonPhone>{currentContact.phone}</StyledPersonPhone>
-                {!currentPerson && (
-                  <StyledNoCrmMatch>No CRM match</StyledNoCrmMatch>
-                )}
+                <StyledPersonPhone>
+                  {currentPerson.phones?.primaryPhoneNumber || 'No phone'}
+                </StyledPersonPhone>
               </StyledPersonHeader>
 
-              <StyledFieldRow>
-                <StyledField>
-                  <StyledFieldLabel>Brokerage</StyledFieldLabel>
-                  <StyledFieldValue>
-                    {currentPerson?.company?.name || currentContact.brokerage}
-                  </StyledFieldValue>
-                </StyledField>
-                {currentPerson?.tier && (
-                  <StyledField>
-                    <StyledFieldLabel>Tier</StyledFieldLabel>
-                    <StyledFieldValue>{currentPerson.tier}</StyledFieldValue>
-                  </StyledField>
-                )}
-              </StyledFieldRow>
-
-              {(currentPerson?.outreachStatus || currentPerson?.lastTouch) && (
+              {currentPerson.company?.name && (
                 <StyledFieldRow>
-                  {currentPerson.outreachStatus && (
+                  <StyledField>
+                    <StyledFieldLabel>Brokerage</StyledFieldLabel>
+                    <StyledFieldValue>
+                      {currentPerson.company.name}
+                    </StyledFieldValue>
+                  </StyledField>
+                  {currentPerson.position && (
                     <StyledField>
-                      <StyledFieldLabel>Outreach Status</StyledFieldLabel>
+                      <StyledFieldLabel>Position</StyledFieldLabel>
                       <StyledFieldValue>
-                        {currentPerson.outreachStatus}
-                      </StyledFieldValue>
-                    </StyledField>
-                  )}
-                  {currentPerson.lastTouch && (
-                    <StyledField>
-                      <StyledFieldLabel>Last Touch</StyledFieldLabel>
-                      <StyledFieldValue>
-                        {currentPerson.lastTouch}
+                        {currentPerson.position}
                       </StyledFieldValue>
                     </StyledField>
                   )}
                 </StyledFieldRow>
               )}
 
-              {(currentPerson?.notes || currentContact.notes) && (
-                <StyledNotesField>
-                  <StyledFieldLabel>Notes</StyledFieldLabel>
-                  <StyledFieldValue>
-                    {currentPerson?.notes || currentContact.notes}
-                  </StyledFieldValue>
-                </StyledNotesField>
-              )}
-
               {hasSecondaryFields && (
                 <StyledSecondaryFields>
-                  {currentPerson?.linkedinLink?.primaryLinkUrl && (
+                  {currentPerson.linkedinLink?.primaryLinkUrl && (
                     <StyledLinkedInLink
                       href={currentPerson.linkedinLink.primaryLinkUrl}
                       target="_blank"
@@ -481,7 +491,7 @@ export const CallStationPage = () => {
                       LinkedIn
                     </StyledLinkedInLink>
                   )}
-                  {currentPerson?.phones?.additionalPhones &&
+                  {currentPerson.phones?.additionalPhones &&
                     currentPerson.phones.additionalPhones.length > 0 && (
                       <StyledField>
                         <StyledFieldLabel>Additional Phones</StyledFieldLabel>
@@ -494,11 +504,12 @@ export const CallStationPage = () => {
               )}
 
               <StyledActions>
-                {!isCallActive ? (
+                {!callState.active ? (
                   <MainButton
                     title="Dial"
                     Icon={IconPhone}
                     onClick={handleStartCall}
+                    disabled={!currentPerson.phones?.primaryPhoneNumber}
                   />
                 ) : (
                   <>
@@ -529,23 +540,48 @@ export const CallStationPage = () => {
                   </>
                 )}
               </StyledActions>
+
+              {callNotes.length > 0 && (
+                <StyledCallsSection>
+                  <StyledCallsSectionTitle>
+                    Calls + transcript
+                  </StyledCallsSectionTitle>
+                  {callNotes.slice(0, 5).map((call) => (
+                    <StyledCallItem key={call.id}>
+                      <StyledCallDisposition>
+                        {call.title}
+                      </StyledCallDisposition>
+                      {call.body && (
+                        <StyledCallTranscript>{call.body}</StyledCallTranscript>
+                      )}
+                    </StyledCallItem>
+                  ))}
+                </StyledCallsSection>
+              )}
             </StyledPersonPanel>
 
-            <StyledQueueSection>
-              <StyledQueueHeader>{notDoneCount} left</StyledQueueHeader>
+            <StyledQueuePanel>
+              <StyledQueueHeader>
+                {
+                  filteredPeople.filter((p) => !completedCallIds.has(p.id))
+                    .length
+                }{' '}
+                remaining
+              </StyledQueueHeader>
               <StyledQueueList>
-                {filteredQueue.map((item, index) => (
+                {filteredPeople.map((person) => (
                   <StyledQueueItem
-                    key={`${item.phone}-${index}`}
-                    isDone={item.done}
-                    onClick={() => handleQueueItemClick(item)}
+                    key={person.id}
+                    isDone={completedCallIds.has(person.id)}
+                    isActive={person.id === currentPerson.id}
+                    onClick={() => handlePersonClick(person)}
                   >
-                    {item.name}
+                    {person.name.firstName} {person.name.lastName}
                   </StyledQueueItem>
                 ))}
               </StyledQueueList>
-            </StyledQueueSection>
-          </>
+            </StyledQueuePanel>
+          </StyledMainLayout>
         )}
       </StyledContent>
     </PageContainer>
