@@ -10,6 +10,7 @@ import {
   AnimatedPlaceholderEmptyTextContainer,
   AnimatedPlaceholderEmptyTitle,
 } from 'twenty-ui/feedback';
+import { QUERY_MAX_RECORDS } from 'twenty-shared/constants';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
@@ -29,6 +30,7 @@ import {
   isCallBridgeHealthy,
   startCallOnBridge,
 } from './start-call-on-bridge';
+import { useFindManyRecordsUntilEnd } from './use-find-many-records-until-end';
 
 type Person = {
   __typename: string;
@@ -313,10 +315,13 @@ export const CallStationPage = () => {
     new Set(),
   );
 
+  // Chips and queue are computed client-side; a single GraphQL page
+  // (default 60, max 200) truncates Solo / Emailed / Testing counts.
   const { records: allPeople, loading: loadingPeople } =
-    useFindManyRecords<Person>({
+    useFindManyRecordsUntilEnd<Person>({
       objectNameSingular: CoreObjectNameSingular.Person,
       filter: {},
+      limit: QUERY_MAX_RECORDS,
       recordGqlFields: {
         id: true,
         name: true,
