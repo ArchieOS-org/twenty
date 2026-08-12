@@ -15,6 +15,8 @@ import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
+import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
+import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 
 type Person = {
   id: string;
@@ -24,13 +26,23 @@ type Person = {
   company?: { name?: string };
   position?: string;
   linkedinLink?: { primaryLinkUrl?: string };
+  tier?: string;
+  outreachStatus?: string;
+  lastTouch?: string;
+  volume?: number;
+  notes?: string;
+  isSolo?: boolean;
 };
 
 type CallRecord = {
   id: string;
-  title: string;
-  body?: string;
+  disposition: string;
+  durationSec?: number;
+  phoneNumber: string;
+  recordingPath?: string;
+  transcript?: string;
   createdAt: string;
+  personId?: string;
 };
 
 type CallState = {
@@ -128,6 +140,10 @@ const StyledFieldLabel = styled.div`
 const StyledFieldValue = styled.div`
   color: ${themeCssVariables.font.color.primary};
   font-size: ${themeCssVariables.font.size.md};
+`;
+
+const StyledNotesField = styled.div`
+  margin-top: ${themeCssVariables.spacing[2]};
 `;
 
 const StyledSecondaryFields = styled.div`
@@ -243,7 +259,9 @@ const StyledQueueItem = styled.div<{ isDone: boolean; isActive: boolean }>`
 `;
 
 export const CallStationPage = () => {
-  const [selectedFilter, setSelectedFilter] = useState<string>('has-phone');
+  const [filterSolo, setFilterSolo] = useState<boolean>(true);
+  const [filterEmailed, setFilterEmailed] = useState<boolean>(true);
+  const [filterHasPhone, setFilterHasPhone] = useState<boolean>(true);
   const [currentPerson, setCurrentPerson] = useState<Person | null>(null);
   const [callState, setCallState] = useState<CallState>({ active: false });
   const [callTimer, setCallTimer] = useState<number>(0);
@@ -263,51 +281,61 @@ export const CallStationPage = () => {
         company: true,
         position: true,
         linkedinLink: true,
+        tier: true,
+        outreachStatus: true,
+        lastTouch: true,
+        volume: true,
+        notes: true,
+        isSolo: true,
       },
     });
 
-  const { records: callNotes } = useFindManyRecords<CallRecord>({
-    objectNameSingular: CoreObjectNameSingular.Note,
+  const { createOneRecord: createCall } = useCreateOneRecord({
+    objectNameSingular: 'call' as CoreObjectNameSingular,
+  });
+
+  const { updateOneRecord: updatePerson } = useUpdateOneRecord({
+    objectNameSingular: CoreObjectNameSingular.Person,
+  });
+
+  const { records: personCalls } = useFindManyRecords<CallRecord>({
+    objectNameSingular: 'call' as CoreObjectNameSingular,
     filter: currentPerson
       ? {
-          title: {
-            ilike: '%Call:%',
+          phoneNumber: {
+            eq: currentPerson.phones?.primaryPhoneNumber,
           },
         }
       : undefined,
     recordGqlFields: {
       id: true,
-      title: true,
-      body: true,
+      disposition: true,
+      durationSec: true,
+      phoneNumber: true,
+      recordingPath: true,
+      transcript: true,
       createdAt: true,
+      personId: true,
     },
     skip: !currentPerson,
   });
 
-  const filteredPeople = allPeople.filter((person) => {
-    if (selectedFilter === 'has-phone') {
-      return !!person.phones?.primaryPhoneNumber;
-    }
-    if (selectedFilter === 'emailed') {
-      return !!person.emails?.primaryEmail;
-    }
-    if (selectedFilter === 'solo') {
+  const filteredPeople = allPeople
+    .filter((person) => {
+      if (filterSolo && !person.isSolo) return false;
+      if (filterEmailed && person.outreachStatus !== 'SENT') return false;
+      if (filterHasPhone && !person.phones?.primaryPhoneNumber) return false;
       return true;
-    }
-    return true;
-  });
+    })
+    .sort((a, b) => (a.volume || 0) - (b.volume || 0));
 
-  const filters = [
-    { id: 'solo', label: `Solo (${allPeople.length})` },
-    {
-      id: 'emailed',
-      label: `Emailed (${allPeople.filter((p) => p.emails?.primaryEmail).length})`,
-    },
-    {
-      id: 'has-phone',
-      label: `Has phone (${allPeople.filter((p) => p.phones?.primaryPhoneNumber).length})`,
-    },
-  ];
+  const soloCount = allPeople.filter((p) => p.isSolo).length;
+  const emailedCount = allPeople.filter(
+    (p) => p.outreachStatus === 'SENT',
+  ).length;
+  const hasPhoneCount = allPeople.filter(
+    (p) => p.phones?.primaryPhoneNumber,
+  ).length;
 
   useEffect(() => {
     if (filteredPeople.length > 0 && !currentPerson) {
@@ -362,7 +390,7 @@ export const CallStationPage = () => {
       DISPOSITION_MAPPING[dispositionLabel] || dispositionLabel;
 
     try {
-      await fetch(`${BRIDGE_BASE_URL}/call/finish`, {
+      const bridgeResponse = await fetch(`${BRIDGE_BASE_URL}/call/finish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -371,15 +399,32 @@ export const CallStationPage = () => {
         }),
       });
 
+      const bridgeData = await bridgeResponse.json();
+
+      await createCall({
+        disposition,
+        durationSec: callTimer,
+        phoneNumber: callState.person.phones?.primaryPhoneNumber || '',
+        recordingPath: bridgeData.recordingPath,
+        transcript: bridgeData.transcript,
+        personId: callState.person.id,
+      });
+
+      if (dispositionLabel === 'Connected') {
+        await updatePerson({
+          idToUpdate: callState.person.id,
+          updateOneRecordInput: {
+            outreachStatus: 'REPLIED',
+          },
+        });
+      }
+
       setCallState({ active: false });
       setCallTimer(0);
       setCompletedCallIds((prev) => new Set(prev).add(callState.person!.id));
 
       const nextPerson = filteredPeople.find(
-        (p) =>
-          p.id !== callState.person!.id &&
-          !completedCallIds.has(p.id) &&
-          !completedCallIds.has(p.id),
+        (p) => p.id !== callState.person!.id && !completedCallIds.has(p.id),
       );
 
       if (nextPerson) {
@@ -417,14 +462,22 @@ export const CallStationPage = () => {
       <PageHeader title="Call Station" Icon={IconPhone} />
       <StyledContent>
         <StyledFilters>
-          {filters.map((filter) => (
-            <Chip
-              key={filter.id}
-              label={filter.label}
-              variant={selectedFilter === filter.id ? 'highlighted' : 'regular'}
-              onClick={() => setSelectedFilter(filter.id)}
-            />
-          ))}
+          <Chip
+            label={`Solo (${soloCount})`}
+            variant={filterSolo ? 'highlighted' : 'regular'}
+            onClick={() => setFilterSolo(!filterSolo)}
+          />
+          <Chip
+            label={`Emailed (${emailedCount})`}
+            variant={filterEmailed ? 'highlighted' : 'regular'}
+            onClick={() => setFilterEmailed(!filterEmailed)}
+          />
+          <Chip
+            label={`Has phone (${hasPhoneCount})`}
+            variant={filterHasPhone ? 'highlighted' : 'regular'}
+            onClick={() => setFilterHasPhone(!filterHasPhone)}
+          />
+          <Chip label="vol ↑" variant="highlighted" disabled />
         </StyledFilters>
 
         {loadingPeople ? (
@@ -460,23 +513,54 @@ export const CallStationPage = () => {
                 </StyledPersonPhone>
               </StyledPersonHeader>
 
-              {currentPerson.company?.name && (
-                <StyledFieldRow>
+              <StyledFieldRow>
+                {currentPerson.company?.name && (
                   <StyledField>
                     <StyledFieldLabel>Brokerage</StyledFieldLabel>
                     <StyledFieldValue>
                       {currentPerson.company.name}
                     </StyledFieldValue>
                   </StyledField>
-                  {currentPerson.position && (
-                    <StyledField>
-                      <StyledFieldLabel>Position</StyledFieldLabel>
-                      <StyledFieldValue>
-                        {currentPerson.position}
-                      </StyledFieldValue>
-                    </StyledField>
-                  )}
-                </StyledFieldRow>
+                )}
+                {currentPerson.tier && (
+                  <StyledField>
+                    <StyledFieldLabel>Tier</StyledFieldLabel>
+                    <StyledFieldValue>{currentPerson.tier}</StyledFieldValue>
+                  </StyledField>
+                )}
+              </StyledFieldRow>
+
+              <StyledFieldRow>
+                {currentPerson.outreachStatus && (
+                  <StyledField>
+                    <StyledFieldLabel>Outreach Status</StyledFieldLabel>
+                    <StyledFieldValue>
+                      {currentPerson.outreachStatus}
+                    </StyledFieldValue>
+                  </StyledField>
+                )}
+                {currentPerson.lastTouch && (
+                  <StyledField>
+                    <StyledFieldLabel>Last Touch</StyledFieldLabel>
+                    <StyledFieldValue>
+                      {currentPerson.lastTouch}
+                    </StyledFieldValue>
+                  </StyledField>
+                )}
+              </StyledFieldRow>
+
+              {currentPerson.volume !== undefined && (
+                <StyledField>
+                  <StyledFieldLabel>Volume</StyledFieldLabel>
+                  <StyledFieldValue>{currentPerson.volume}</StyledFieldValue>
+                </StyledField>
+              )}
+
+              {currentPerson.notes && (
+                <StyledNotesField>
+                  <StyledFieldLabel>Notes</StyledFieldLabel>
+                  <StyledFieldValue>{currentPerson.notes}</StyledFieldValue>
+                </StyledNotesField>
               )}
 
               {hasSecondaryFields && (
@@ -541,18 +625,20 @@ export const CallStationPage = () => {
                 )}
               </StyledActions>
 
-              {callNotes.length > 0 && (
+              {personCalls.length > 0 && (
                 <StyledCallsSection>
                   <StyledCallsSectionTitle>
                     Calls + transcript
                   </StyledCallsSectionTitle>
-                  {callNotes.slice(0, 5).map((call) => (
+                  {personCalls.slice(0, 5).map((call) => (
                     <StyledCallItem key={call.id}>
                       <StyledCallDisposition>
-                        {call.title}
+                        {call.disposition} · {call.durationSec}s
                       </StyledCallDisposition>
-                      {call.body && (
-                        <StyledCallTranscript>{call.body}</StyledCallTranscript>
+                      {call.transcript && (
+                        <StyledCallTranscript>
+                          {call.transcript}
+                        </StyledCallTranscript>
                       )}
                     </StyledCallItem>
                   ))}
