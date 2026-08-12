@@ -270,6 +270,7 @@ export const CallStationPage = () => {
   const [filterSolo, setFilterSolo] = useState<boolean>(true);
   const [filterEmailed, setFilterEmailed] = useState<boolean>(true);
   const [filterHasPhone, setFilterHasPhone] = useState<boolean>(true);
+  const [filterTesting, setFilterTesting] = useState<boolean>(false);
   const [currentPerson, setCurrentPerson] = useState<Person | null>(null);
   const [callState, setCallState] = useState<CallState>({ active: false });
   const [callTimer, setCallTimer] = useState<number>(0);
@@ -328,6 +329,12 @@ export const CallStationPage = () => {
 
   const filteredPeople = allPeople
     .filter((person) => {
+      if (filterTesting) {
+        const isQaByCompany = person.company?.name === 'Call Station QA';
+        const isQaByNotes = person.notes?.trim().startsWith('Testing') === true;
+        return isQaByCompany || isQaByNotes;
+      }
+
       if (filterSolo && !person.isSolo) return false;
       if (filterEmailed && person.outreachStatus !== 'SENT') return false;
       if (filterHasPhone && !person.phones?.primaryPhoneNumber) return false;
@@ -342,6 +349,11 @@ export const CallStationPage = () => {
   const hasPhoneCount = allPeople.filter(
     (p) => p.phones?.primaryPhoneNumber,
   ).length;
+  const testingCount = allPeople.filter((p) => {
+    const isQaByCompany = p.company?.name === 'Call Station QA';
+    const isQaByNotes = p.notes?.trim().startsWith('Testing') === true;
+    return isQaByCompany || isQaByNotes;
+  }).length;
 
   useEffect(() => {
     if (filteredPeople.length > 0 && !currentPerson) {
@@ -448,6 +460,11 @@ export const CallStationPage = () => {
     setCallTimer(0);
   };
 
+  const handleTestingToggle = () => {
+    setFilterTesting(!filterTesting);
+    setCurrentPerson(null);
+  };
+
   const formatTimer = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -469,6 +486,14 @@ export const CallStationPage = () => {
       <PageHeader title="Call Station" Icon={IconPhone} />
       <StyledContent>
         <StyledFilters>
+          <StyledClickableChip onClick={handleTestingToggle}>
+            <Chip
+              label={`Testing (${testingCount})`}
+              variant={
+                filterTesting ? ChipVariant.Highlighted : ChipVariant.Regular
+              }
+            />
+          </StyledClickableChip>
           <StyledClickableChip onClick={() => setFilterSolo(!filterSolo)}>
             <Chip
               label={`Solo (${soloCount})`}
