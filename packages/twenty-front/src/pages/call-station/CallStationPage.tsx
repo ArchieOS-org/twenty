@@ -82,6 +82,20 @@ const StyledFilters = styled.div`
   gap: ${themeCssVariables.spacing[2]};
 `;
 
+const StyledQaRow = styled.div`
+  align-items: center;
+  display: flex;
+  gap: ${themeCssVariables.spacing[2]};
+  margin-top: ${themeCssVariables.spacing[2]};
+  opacity: 0.55;
+`;
+
+const StyledQaLabel = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+`;
+
 const StyledMainLayout = styled.div`
   display: grid;
   gap: ${themeCssVariables.spacing[6]};
@@ -486,14 +500,6 @@ export const CallStationPage = () => {
       <PageHeader title="Call Station" Icon={IconPhone} />
       <StyledContent>
         <StyledFilters>
-          <StyledClickableChip onClick={handleTestingToggle}>
-            <Chip
-              label={`Testing (${testingCount})`}
-              variant={
-                filterTesting ? ChipVariant.Highlighted : ChipVariant.Regular
-              }
-            />
-          </StyledClickableChip>
           <StyledClickableChip onClick={() => setFilterSolo(!filterSolo)}>
             <Chip
               label={`Solo (${soloCount})`}
@@ -522,6 +528,18 @@ export const CallStationPage = () => {
           </StyledClickableChip>
           <Chip label="vol ↑" variant={ChipVariant.Highlighted} disabled />
         </StyledFilters>
+
+        <StyledQaRow>
+          <StyledQaLabel>QA</StyledQaLabel>
+          <StyledClickableChip onClick={handleTestingToggle}>
+            <Chip
+              label={`Testing (${testingCount})`}
+              variant={
+                filterTesting ? ChipVariant.Highlighted : ChipVariant.Regular
+              }
+            />
+          </StyledClickableChip>
+        </StyledQaRow>
 
         {loadingPeople ? (
           <AnimatedPlaceholderEmptyContainer>
