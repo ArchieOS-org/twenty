@@ -33,7 +33,7 @@ type Person = {
   lastTouch?: string;
   volume?: number;
   notes?: string;
-  isSolo?: boolean;
+  soloVsTeam?: string;
 };
 
 type CallRecord = {
@@ -309,7 +309,7 @@ export const CallStationPage = () => {
         lastTouch: true,
         volume: true,
         notes: true,
-        isSolo: true,
+        soloVsTeam: true,
       },
     });
 
@@ -349,14 +349,14 @@ export const CallStationPage = () => {
         return isQaByCompany || isQaByNotes;
       }
 
-      if (filterSolo && !person.isSolo) return false;
+      if (filterSolo && person.soloVsTeam !== 'SOLO') return false;
       if (filterEmailed && person.outreachStatus !== 'SENT') return false;
       if (filterHasPhone && !person.phones?.primaryPhoneNumber) return false;
       return true;
     })
     .sort((a, b) => (a.volume || 0) - (b.volume || 0));
 
-  const soloCount = allPeople.filter((p) => p.isSolo).length;
+  const soloCount = allPeople.filter((p) => p.soloVsTeam === 'SOLO').length;
   const emailedCount = allPeople.filter(
     (p) => p.outreachStatus === 'SENT',
   ).length;
