@@ -67,6 +67,7 @@ type CallRecord = {
 
 type CallState = {
   active: boolean;
+  awaitingDisposition: boolean;
   startTime?: number;
   person?: Person;
 };
@@ -308,7 +309,7 @@ export const CallStationPage = () => {
   const [filterHasPhone, setFilterHasPhone] = useState<boolean>(true);
   const [filterTesting, setFilterTesting] = useState<boolean>(false);
   const [currentPerson, setCurrentPerson] = useState<Person | null>(null);
-  const [callState, setCallState] = useState<CallState>({ active: false });
+  const [callState, setCallState] = useState<CallState>({ active: false, awaitingDisposition: false });
   const [callTimer, setCallTimer] = useState<number>(0);
   const [isBridgeOffline, setIsBridgeOffline] = useState(false);
   const [completedCallIds, setCompletedCallIds] = useState<Set<string>>(
@@ -488,6 +489,7 @@ export const CallStationPage = () => {
     setIsBridgeOffline(false);
     setCallState({
       active: true,
+      awaitingDisposition: false,
       startTime: Date.now(),
       person: currentPerson,
     });
@@ -531,7 +533,7 @@ export const CallStationPage = () => {
         });
       }
 
-      setCallState({ active: false });
+      setCallState({ active: false, awaitingDisposition: false });
       setCallTimer(0);
       setCompletedCallIds((prev) => new Set(prev).add(callState.person!.id));
 
@@ -549,8 +551,19 @@ export const CallStationPage = () => {
 
   const handlePersonClick = (person: Person) => {
     setCurrentPerson(person);
-    setCallState({ active: false });
+    setCallState({ active: false, awaitingDisposition: false });
     setCallTimer(0);
+  };
+
+  const handleCallEnded = () => {
+    if (!callState.active) {
+      return;
+    }
+
+    setCallState((prev) => ({
+      ...prev,
+      awaitingDisposition: true,
+    }));
   };
 
   const handleTestingToggle = () => {
@@ -642,7 +655,9 @@ export const CallStationPage = () => {
               {callState.active && (
                 <StyledCallingBanner>
                   <IconCircle size={12} />
-                  Calling · recording · {formatTimer(callTimer)}
+                  {callState.awaitingDisposition
+                    ? `Call ended · pick disposition · ${formatTimer(callTimer)}`
+                    : `Calling · recording · ${formatTimer(callTimer)}`}
                 </StyledCallingBanner>
               )}
 
@@ -734,6 +749,11 @@ export const CallStationPage = () => {
                     Icon={IconPhone}
                     onClick={handleStartCall}
                     disabled={!currentPerson.phones?.primaryPhoneNumber}
+                  />
+                ) : !callState.awaitingDisposition ? (
+                  <MainButton
+                    title="I've ended the call"
+                    onClick={handleCallEnded}
                   />
                 ) : (
                   <>
