@@ -1,5 +1,5 @@
 import { styled } from '@linaria/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IconPhone, IconBrandLinkedin, IconCircle } from 'twenty-ui/icon';
 import { MainButton } from 'twenty-ui/input';
 import { Chip, ChipVariant } from 'twenty-ui/data-display';
@@ -344,11 +344,16 @@ export const CallStationPage = () => {
 
   const loadingPeople = isDownloadingPeople || !hasLoadedPeople;
 
+  // fetchAllRecords identity is not stable — do not put it in effect deps
+  // or React #185 (max update depth) loops on mount.
+  const fetchAllRecordsRef = useRef(fetchAllRecords);
+  fetchAllRecordsRef.current = fetchAllRecords;
+
   useEffect(() => {
     let isCancelled = false;
 
     const loadAllPeople = async () => {
-      const records = await fetchAllRecords();
+      const records = await fetchAllRecordsRef.current();
 
       if (isCancelled) {
         return;
@@ -363,7 +368,7 @@ export const CallStationPage = () => {
     return () => {
       isCancelled = true;
     };
-  }, [fetchAllRecords]);
+  }, []);
 
   const { createOneRecord: createCall } = useCreateOneRecord({
     objectNameSingular: 'call' as CoreObjectNameSingular,
