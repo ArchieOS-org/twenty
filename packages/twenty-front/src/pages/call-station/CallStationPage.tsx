@@ -1,7 +1,8 @@
 import { styled } from '@linaria/react';
 import { useEffect, useState } from 'react';
 import { IconPhone, IconBrandLinkedin, IconCircle } from 'twenty-ui/icon';
-import { MainButton, Chip } from 'twenty-ui/input';
+import { MainButton } from 'twenty-ui/input';
+import { Chip, ChipVariant } from 'twenty-ui/data-display';
 import { H2Title } from 'twenty-ui/typography';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import {
@@ -19,6 +20,7 @@ import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 
 type Person = {
+  __typename: string;
   id: string;
   name: { firstName: string; lastName: string };
   phones: { primaryPhoneNumber?: string; additionalPhones?: string[] };
@@ -35,6 +37,7 @@ type Person = {
 };
 
 type CallRecord = {
+  __typename: string;
   id: string;
   disposition: string;
   durationSec?: number;
@@ -66,6 +69,11 @@ const StyledContent = styled.div`
   flex-direction: column;
   gap: ${themeCssVariables.spacing[6]};
   padding: ${themeCssVariables.spacing[6]} ${themeCssVariables.spacing[8]};
+`;
+
+const StyledClickableChip = styled.div`
+  cursor: pointer;
+  display: inline-flex;
 `;
 
 const StyledFilters = styled.div`
@@ -294,9 +302,7 @@ export const CallStationPage = () => {
     objectNameSingular: 'call' as CoreObjectNameSingular,
   });
 
-  const { updateOneRecord: updatePerson } = useUpdateOneRecord({
-    objectNameSingular: CoreObjectNameSingular.Person,
-  });
+  const { updateOneRecord: updatePerson } = useUpdateOneRecord();
 
   const { records: personCalls } = useFindManyRecords<CallRecord>({
     objectNameSingular: 'call' as CoreObjectNameSingular,
@@ -412,6 +418,7 @@ export const CallStationPage = () => {
 
       if (dispositionLabel === 'Connected') {
         await updatePerson({
+          objectNameSingular: CoreObjectNameSingular.Person,
           idToUpdate: callState.person.id,
           updateOneRecordInput: {
             outreachStatus: 'REPLIED',
@@ -462,22 +469,33 @@ export const CallStationPage = () => {
       <PageHeader title="Call Station" Icon={IconPhone} />
       <StyledContent>
         <StyledFilters>
-          <Chip
-            label={`Solo (${soloCount})`}
-            variant={filterSolo ? 'highlighted' : 'regular'}
-            onClick={() => setFilterSolo(!filterSolo)}
-          />
-          <Chip
-            label={`Emailed (${emailedCount})`}
-            variant={filterEmailed ? 'highlighted' : 'regular'}
-            onClick={() => setFilterEmailed(!filterEmailed)}
-          />
-          <Chip
-            label={`Has phone (${hasPhoneCount})`}
-            variant={filterHasPhone ? 'highlighted' : 'regular'}
+          <StyledClickableChip onClick={() => setFilterSolo(!filterSolo)}>
+            <Chip
+              label={`Solo (${soloCount})`}
+              variant={
+                filterSolo ? ChipVariant.Highlighted : ChipVariant.Regular
+              }
+            />
+          </StyledClickableChip>
+          <StyledClickableChip onClick={() => setFilterEmailed(!filterEmailed)}>
+            <Chip
+              label={`Emailed (${emailedCount})`}
+              variant={
+                filterEmailed ? ChipVariant.Highlighted : ChipVariant.Regular
+              }
+            />
+          </StyledClickableChip>
+          <StyledClickableChip
             onClick={() => setFilterHasPhone(!filterHasPhone)}
-          />
-          <Chip label="vol ↑" variant="highlighted" disabled />
+          >
+            <Chip
+              label={`Has phone (${hasPhoneCount})`}
+              variant={
+                filterHasPhone ? ChipVariant.Highlighted : ChipVariant.Regular
+              }
+            />
+          </StyledClickableChip>
+          <Chip label="vol ↑" variant={ChipVariant.Highlighted} disabled />
         </StyledFilters>
 
         {loadingPeople ? (
@@ -613,12 +631,12 @@ export const CallStationPage = () => {
                     />
                     <MainButton
                       title="Busy"
-                      variant="tertiary"
+                      variant="secondary"
                       onClick={() => handleFinishCall('Busy')}
                     />
                     <MainButton
                       title="Wrong Number"
-                      variant="tertiary"
+                      variant="secondary"
                       onClick={() => handleFinishCall('Wrong Number')}
                     />
                   </>
