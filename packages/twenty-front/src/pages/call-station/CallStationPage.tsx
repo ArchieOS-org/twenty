@@ -20,6 +20,10 @@ import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 
 import {
+  type CallTranscript,
+  getCallTranscriptText,
+} from './get-call-transcript-text';
+import {
   BRIDGE_BASE_URL,
   CALL_BRIDGE_OFFLINE_COPY,
   isCallBridgeHealthy,
@@ -54,7 +58,7 @@ type CallRecord = {
   durationSec?: number;
   phoneNumber: string;
   recordingPath?: string;
-  transcript?: string;
+  transcript?: CallTranscript | string | null;
   createdAt: string;
   personId?: string;
 };
@@ -352,7 +356,10 @@ export const CallStationPage = () => {
       durationSec: true,
       phoneNumber: true,
       recordingPath: true,
-      transcript: true,
+      transcript: {
+        markdown: true,
+        blocknote: true,
+      },
       createdAt: true,
       personId: true,
     },
@@ -725,18 +732,24 @@ export const CallStationPage = () => {
                   <StyledCallsSectionTitle>
                     Calls + transcript
                   </StyledCallsSectionTitle>
-                  {personCalls.slice(0, 5).map((call) => (
-                    <StyledCallItem key={call.id}>
-                      <StyledCallDisposition>
-                        {call.disposition} · {call.durationSec}s
-                      </StyledCallDisposition>
-                      {call.transcript && (
-                        <StyledCallTranscript>
-                          {call.transcript}
-                        </StyledCallTranscript>
-                      )}
-                    </StyledCallItem>
-                  ))}
+                  {personCalls.slice(0, 5).map((call) => {
+                    const transcriptText = getCallTranscriptText(
+                      call.transcript,
+                    );
+
+                    return (
+                      <StyledCallItem key={call.id}>
+                        <StyledCallDisposition>
+                          {call.disposition} · {call.durationSec}s
+                        </StyledCallDisposition>
+                        {transcriptText !== '' && (
+                          <StyledCallTranscript>
+                            {transcriptText}
+                          </StyledCallTranscript>
+                        )}
+                      </StyledCallItem>
+                    );
+                  })}
                 </StyledCallsSection>
               )}
             </StyledPersonPanel>
