@@ -26,6 +26,7 @@ type Person = {
   phones: { primaryPhoneNumber?: string; additionalPhones?: string[] };
   emails: { primaryEmail?: string };
   company?: { name?: string };
+  brokerage?: string;
   position?: string;
   linkedinLink?: { primaryLinkUrl?: string };
   tier?: string;
@@ -35,6 +36,9 @@ type Person = {
   notes?: string;
   soloVsTeam?: string;
 };
+
+const getBrokerage = (person: Person): string =>
+  person.brokerage || person.company?.name || '';
 
 type CallRecord = {
   __typename: string;
@@ -280,6 +284,13 @@ const StyledQueueItem = styled.div<{ isDone: boolean; isActive: boolean }>`
   }
 `;
 
+const StyledQueueItemMeta = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.xs};
+  font-weight: ${themeCssVariables.font.weight.regular};
+  margin-top: ${themeCssVariables.spacing[1]};
+`;
+
 export const CallStationPage = () => {
   const [filterSolo, setFilterSolo] = useState<boolean>(true);
   const [filterEmailed, setFilterEmailed] = useState<boolean>(true);
@@ -302,6 +313,7 @@ export const CallStationPage = () => {
         phones: true,
         emails: true,
         company: true,
+        brokerage: true,
         position: true,
         linkedinLink: true,
         tier: true,
@@ -344,7 +356,7 @@ export const CallStationPage = () => {
   const filteredPeople = allPeople
     .filter((person) => {
       if (filterTesting) {
-        const isQaByCompany = person.company?.name === 'Call Station QA';
+        const isQaByCompany = getBrokerage(person) === 'Call Station QA';
         const isQaByNotes = person.notes?.trim().startsWith('Testing') === true;
         return isQaByCompany || isQaByNotes;
       }
@@ -364,7 +376,7 @@ export const CallStationPage = () => {
     (p) => p.phones?.primaryPhoneNumber,
   ).length;
   const testingCount = allPeople.filter((p) => {
-    const isQaByCompany = p.company?.name === 'Call Station QA';
+    const isQaByCompany = getBrokerage(p) === 'Call Station QA';
     const isQaByNotes = p.notes?.trim().startsWith('Testing') === true;
     return isQaByCompany || isQaByNotes;
   }).length;
@@ -400,7 +412,7 @@ export const CallStationPage = () => {
         body: JSON.stringify({
           phone: currentPerson.phones.primaryPhoneNumber,
           name: `${currentPerson.name.firstName} ${currentPerson.name.lastName}`,
-          brokerage: currentPerson.company?.name || '',
+          brokerage: getBrokerage(currentPerson),
         }),
       });
 
@@ -575,11 +587,11 @@ export const CallStationPage = () => {
               </StyledPersonHeader>
 
               <StyledFieldRow>
-                {currentPerson.company?.name && (
+                {getBrokerage(currentPerson) && (
                   <StyledField>
                     <StyledFieldLabel>Brokerage</StyledFieldLabel>
                     <StyledFieldValue>
-                      {currentPerson.company.name}
+                      {getBrokerage(currentPerson)}
                     </StyledFieldValue>
                   </StyledField>
                 )}
@@ -724,6 +736,11 @@ export const CallStationPage = () => {
                     onClick={() => handlePersonClick(person)}
                   >
                     {person.name.firstName} {person.name.lastName}
+                    {getBrokerage(person) && (
+                      <StyledQueueItemMeta>
+                        {getBrokerage(person)}
+                      </StyledQueueItemMeta>
+                    )}
                   </StyledQueueItem>
                 ))}
               </StyledQueueList>
