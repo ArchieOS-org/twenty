@@ -346,6 +346,7 @@ export const CallStationPage = () => {
 
   // fetchAllRecords identity is not stable — do not put it in effect deps
   // or React #185 (max update depth) loops on mount.
+  // oxlint-disable-next-line twenty/no-state-useref
   const fetchAllRecordsRef = useRef(fetchAllRecords);
   fetchAllRecordsRef.current = fetchAllRecords;
 
@@ -368,6 +369,8 @@ export const CallStationPage = () => {
     return () => {
       isCancelled = true;
     };
+    // Load People once on mount. Do not depend on fetchAllRecords.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { createOneRecord: createCall } = useCreateOneRecord({
