@@ -17,6 +17,7 @@ import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
+import { useLazyFetchAllRecords } from '@/object-record/hooks/useLazyFetchAllRecords';
 import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 
@@ -30,7 +31,6 @@ import {
   isCallBridgeHealthy,
   startCallOnBridge,
 } from './start-call-on-bridge';
-import { useFindManyRecordsUntilEnd } from './use-find-many-records-until-end';
 
 type Person = {
   __typename: string;
@@ -314,11 +314,13 @@ export const CallStationPage = () => {
   const [completedCallIds, setCompletedCallIds] = useState<Set<string>>(
     new Set(),
   );
+  const [allPeople, setAllPeople] = useState<Person[]>([]);
+  const [hasLoadedPeople, setHasLoadedPeople] = useState(false);
 
-  // Chips and queue are computed client-side; a single GraphQL page
-  // (default 60, max 200) truncates Solo / Emailed / Testing counts.
-  const { records: allPeople, loading: loadingPeople } =
-    useFindManyRecordsUntilEnd<Person>({
+  // Chips and queue are computed client-side; one GraphQL page truncates
+  // Solo / Emailed / Testing. useLazyFetchAllRecords pages until the end.
+  const { fetchAllRecords, isDownloading: isDownloadingPeople } =
+    useLazyFetchAllRecords({
       objectNameSingular: CoreObjectNameSingular.Person,
       filter: {},
       limit: QUERY_MAX_RECORDS,
@@ -339,6 +341,29 @@ export const CallStationPage = () => {
         soloVsTeam: true,
       },
     });
+
+  const loadingPeople = isDownloadingPeople || !hasLoadedPeople;
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadAllPeople = async () => {
+      const records = await fetchAllRecords();
+
+      if (isCancelled) {
+        return;
+      }
+
+      setAllPeople(records as Person[]);
+      setHasLoadedPeople(true);
+    };
+
+    void loadAllPeople();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [fetchAllRecords]);
 
   const { createOneRecord: createCall } = useCreateOneRecord({
     objectNameSingular: 'call' as CoreObjectNameSingular,
