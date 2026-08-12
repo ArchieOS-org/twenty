@@ -123,6 +123,12 @@ const NotFound = lazy(() =>
   })),
 );
 
+const CallStationPage = lazy(() =>
+  import('~/pages/call-station/CallStationPage').then((module) => ({
+    default: module.CallStationPage,
+  })),
+);
+
 const preloadOnboardingPages = () => {
   WorkspaceActivation.preload();
   CreateProfile.preload();
@@ -182,6 +188,14 @@ const createWorkspaceAppRouter = (
                 element={
                   <LazyRoute>
                     <StandalonePageLayoutPage />
+                  </LazyRoute>
+                }
+              />
+              <Route
+                path={AppPath.CallStation}
+                element={
+                  <LazyRoute>
+                    <CallStationPage />
                   </LazyRoute>
                 }
               />
