@@ -1,10 +1,15 @@
 import { styled } from '@linaria/react';
-import { useEffect, useState } from 'react';
-import { IconPhone } from 'twenty-ui/icon';
+import { useCallback, useEffect, useState } from 'react';
+import { IconPhone, IconBrandLinkedin } from 'twenty-ui/icon';
 import { MainButton } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
+import { CoreObjectNameSingular } from 'twenty-shared/types';
 
+import { PageContainer } from '@/ui/layout/page/components/PageContainer';
+import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
+import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
+import { H2Title } from 'twenty-ui/display';
 
 type QueueItem = {
   name: string;
@@ -14,15 +19,22 @@ type QueueItem = {
   done: boolean;
 };
 
+type Person = {
+  id: string;
+  name: { firstName: string; lastName: string };
+  phones: { primaryPhoneNumber?: string; additionalPhones?: string[] };
+  emails: { primaryEmail?: string };
+  company?: { name?: string };
+  outreachStatus?: string;
+  lastTouch?: string;
+  notes?: string;
+  tier?: string;
+  linkedinLink?: { primaryLinkUrl?: string };
+};
+
 const BRIDGE_BASE_URL = 'http://127.0.0.1:8787';
 const QUEUE_PATH =
   '/Users/noahdeskin/.hermes/data/austin-realtors/call_queue.csv';
-
-const GROUP_MAPPING: Record<string, string> = {
-  'A - Talk first': 'A',
-  'B - Backup': 'B',
-  'Team member': 'Team',
-};
 
 const DISPOSITION_MAPPING: Record<string, string> = {
   Connected: 'REPLIED',
@@ -32,115 +44,93 @@ const DISPOSITION_MAPPING: Record<string, string> = {
   Busy: 'BUSY',
 };
 
-const StyledContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-`;
-
-const StyledGroupPicker = styled.div`
-  align-items: center;
-  background: ${themeCssVariables.background.primary};
-  border-bottom: 1px solid ${themeCssVariables.border.color.medium};
-  display: flex;
-  gap: ${themeCssVariables.spacing[3]};
-  padding: ${themeCssVariables.spacing[4]};
-`;
-
-const StyledGroupChip = styled.button<{ isSelected: boolean }>`
-  background: ${({ isSelected }) =>
-    isSelected ? themeCssVariables.color.blue : 'transparent'};
-  border: 2px solid
-    ${({ isSelected }) =>
-      isSelected
-        ? themeCssVariables.color.blue
-        : themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.md};
-  color: ${({ isSelected }) =>
-    isSelected
-      ? themeCssVariables.font.color.inverted
-      : themeCssVariables.font.color.primary};
-  cursor: pointer;
-  font-size: ${themeCssVariables.font.size.md};
-  font-weight: ${themeCssVariables.font.weight.semiBold};
-  min-width: 80px;
-  padding: ${themeCssVariables.spacing[3]} ${themeCssVariables.spacing[4]};
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: ${({ isSelected }) =>
-      isSelected
-        ? themeCssVariables.color.blue
-        : themeCssVariables.background.transparent.light};
-  }
-`;
-
-const StyledTheater = styled.div`
-  align-items: center;
+const StyledContent = styled.div`
   display: flex;
   flex-direction: column;
   gap: ${themeCssVariables.spacing[6]};
-  justify-content: center;
-  min-height: 400px;
-  padding: ${themeCssVariables.spacing[8]} ${themeCssVariables.spacing[6]};
+  padding: ${themeCssVariables.spacing[6]} ${themeCssVariables.spacing[8]};
 `;
 
-const StyledContactName = styled.div`
-  color: ${themeCssVariables.font.color.primary};
-  font-size: 48px;
-  font-weight: ${themeCssVariables.font.weight.semiBold};
-  letter-spacing: -0.02em;
-  text-align: center;
-`;
-
-const StyledContactPhone = styled.div`
-  color: ${themeCssVariables.font.color.secondary};
-  font-size: ${themeCssVariables.font.size.xl};
-  font-weight: ${themeCssVariables.font.weight.medium};
-  margin-top: -${themeCssVariables.spacing[3]};
-`;
-
-const StyledContactReason = styled.div`
-  color: ${themeCssVariables.font.color.tertiary};
-  font-size: ${themeCssVariables.font.size.md};
-  font-style: italic;
-  margin-top: -${themeCssVariables.spacing[2]};
-`;
-
-const StyledCallButton = styled.div`
-  margin-top: ${themeCssVariables.spacing[4]};
-  min-width: 200px;
-`;
-
-const StyledDispositionButtons = styled.div`
+const StyledGroupTabs = styled.div`
+  border-bottom: 1px solid ${themeCssVariables.border.color.light};
   display: flex;
-  gap: ${themeCssVariables.spacing[3]};
-  margin-top: ${themeCssVariables.spacing[4]};
+  gap: ${themeCssVariables.spacing[2]};
 `;
 
-const StyledDispositionButton = styled.button`
+const StyledPersonPanel = styled.div`
   background: ${themeCssVariables.background.secondary};
-  border: 2px solid ${themeCssVariables.border.color.medium};
+  border: 1px solid ${themeCssVariables.border.color.medium};
   border-radius: ${themeCssVariables.border.radius.md};
-  color: ${themeCssVariables.font.color.primary};
-  cursor: pointer;
-  font-size: ${themeCssVariables.font.size.md};
+  padding: ${themeCssVariables.spacing[6]};
+`;
+
+const StyledPersonHeader = styled.div`
+  border-bottom: 1px solid ${themeCssVariables.border.color.light};
+  margin-bottom: ${themeCssVariables.spacing[4]};
+  padding-bottom: ${themeCssVariables.spacing[4]};
+`;
+
+const StyledPersonName = styled(H2Title)`
+  margin-bottom: ${themeCssVariables.spacing[1]};
+`;
+
+const StyledFieldRow = styled.div`
+  display: grid;
+  gap: ${themeCssVariables.spacing[4]};
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: ${themeCssVariables.spacing[3]};
+`;
+
+const StyledField = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[1]};
+`;
+
+const StyledFieldLabel = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
   font-weight: ${themeCssVariables.font.weight.medium};
-  padding: ${themeCssVariables.spacing[3]} ${themeCssVariables.spacing[5]};
-  transition: all 0.2s ease;
+`;
+
+const StyledFieldValue = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: ${themeCssVariables.font.size.md};
+`;
+
+const StyledNotesField = styled.div`
+  margin-top: ${themeCssVariables.spacing[2]};
+`;
+
+const StyledSecondaryFields = styled.div`
+  border-top: 1px solid ${themeCssVariables.border.color.light};
+  display: flex;
+  gap: ${themeCssVariables.spacing[4]};
+  margin-top: ${themeCssVariables.spacing[4]};
+  padding-top: ${themeCssVariables.spacing[4]};
+`;
+
+const StyledLinkedInLink = styled.a`
+  align-items: center;
+  color: ${themeCssVariables.font.color.secondary};
+  display: flex;
+  font-size: ${themeCssVariables.font.size.sm};
+  gap: ${themeCssVariables.spacing[1]};
+  text-decoration: none;
 
   &:hover {
-    background: ${themeCssVariables.background.tertiary};
-    border-color: ${themeCssVariables.border.color.strong};
+    color: ${themeCssVariables.font.color.primary};
   }
 `;
 
+const StyledActions = styled.div`
+  display: flex;
+  gap: ${themeCssVariables.spacing[3]};
+  margin-top: ${themeCssVariables.spacing[6]};
+`;
+
 const StyledQueueSection = styled.div`
-  border-top: 1px solid ${themeCssVariables.border.color.light};
-  flex: 1;
-  overflow-y: auto;
-  padding: ${themeCssVariables.spacing[4]};
+  margin-top: ${themeCssVariables.spacing[4]};
 `;
 
 const StyledQueueHeader = styled.div`
@@ -148,7 +138,6 @@ const StyledQueueHeader = styled.div`
   font-size: ${themeCssVariables.font.size.sm};
   font-weight: ${themeCssVariables.font.weight.medium};
   margin-bottom: ${themeCssVariables.spacing[3]};
-  text-transform: uppercase;
 `;
 
 const StyledQueueList = styled.div`
@@ -167,7 +156,6 @@ const StyledQueueItem = styled.div<{ isDone: boolean }>`
   opacity: ${({ isDone }) => (isDone ? 0.4 : 1)};
   padding: ${themeCssVariables.spacing[2]};
   text-decoration: ${({ isDone }) => (isDone ? 'line-through' : 'none')};
-  transition: color 0.15s ease;
 
   &:hover {
     color: ${({ isDone }) =>
@@ -177,21 +165,30 @@ const StyledQueueItem = styled.div<{ isDone: boolean }>`
   }
 `;
 
-const StyledEmptyState = styled.div`
-  align-items: center;
-  color: ${themeCssVariables.font.color.tertiary};
-  display: flex;
-  font-size: ${themeCssVariables.font.size.lg};
-  height: 200px;
-  justify-content: center;
-`;
-
 export const CallStationPage = () => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>('A - Talk first');
   const [currentContact, setCurrentContact] = useState<QueueItem | null>(null);
+  const [currentPerson, setCurrentPerson] = useState<Person | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const { records: people } = useFindManyRecords<Person>({
+    objectNameSingular: CoreObjectNameSingular.Person,
+    filter: {},
+    recordGqlFields: {
+      id: true,
+      name: true,
+      phones: true,
+      emails: true,
+      company: true,
+      outreachStatus: true,
+      lastTouch: true,
+      notes: true,
+      tier: true,
+      linkedinLink: true,
+    },
+  });
 
   const fetchQueue = async () => {
     try {
@@ -206,7 +203,7 @@ export const CallStationPage = () => {
       }
 
       const data = await response.json();
-      setQueue(data.items || []);
+      setQueue(data.queue || []);
       setIsLoading(false);
     } catch {
       setIsLoading(false);
@@ -229,13 +226,23 @@ export const CallStationPage = () => {
   const filteredQueue = filterQueueByGroup(queue);
   const notDoneFilteredQueue = filteredQueue.filter((item) => !item.done);
 
-  const availableGroups = ['A - Talk first', 'B - Backup', 'Team member'];
+  const availableGroups = [
+    { id: 'A - Talk first', label: 'A' },
+    { id: 'B - Backup', label: 'B' },
+    { id: 'Team member', label: 'Team' },
+  ];
 
   useEffect(() => {
     if (notDoneFilteredQueue.length > 0 && !currentContact) {
-      setCurrentContact(notDoneFilteredQueue[0]);
+      const nextContact = notDoneFilteredQueue[0];
+      setCurrentContact(nextContact);
+
+      const matchingPerson = people.find(
+        (p) => p.phones?.primaryPhoneNumber === nextContact.phone,
+      );
+      setCurrentPerson(matchingPerson || null);
     }
-  }, [notDoneFilteredQueue, currentContact]);
+  }, [notDoneFilteredQueue, currentContact, people]);
 
   const handleStartCall = async () => {
     if (!currentContact) return;
@@ -280,9 +287,16 @@ export const CallStationPage = () => {
         (item) => item.phone !== currentContact.phone,
       );
       if (updatedNotDoneQueue.length > 0) {
-        setCurrentContact(updatedNotDoneQueue[0]);
+        const nextContact = updatedNotDoneQueue[0];
+        setCurrentContact(nextContact);
+
+        const matchingPerson = people.find(
+          (p) => p.phones?.primaryPhoneNumber === nextContact.phone,
+        );
+        setCurrentPerson(matchingPerson || null);
       } else {
         setCurrentContact(null);
+        setCurrentPerson(null);
       }
     } catch {
       // Silently handle error
@@ -292,102 +306,170 @@ export const CallStationPage = () => {
   const handleQueueItemClick = (item: QueueItem) => {
     if (!item.done) {
       setCurrentContact(item);
+      const matchingPerson = people.find(
+        (p) => p.phones?.primaryPhoneNumber === item.phone,
+      );
+      setCurrentPerson(matchingPerson || null);
       setIsCallActive(false);
     }
   };
 
+  const handleGroupChange = useCallback((groupId: string) => {
+    setSelectedGroup(groupId);
+    setCurrentContact(null);
+    setCurrentPerson(null);
+    setIsCallActive(false);
+  }, []);
+
   const notDoneCount = notDoneFilteredQueue.length;
+  const displayName = currentPerson
+    ? `${currentPerson.name.firstName} ${currentPerson.name.lastName}`
+    : currentContact?.name || '';
 
   return (
-    <StyledContainer>
+    <PageContainer>
       <PageTitle title="Call Station" />
-      <StyledGroupPicker>
-        {availableGroups.map((group) => {
-          const shortName = GROUP_MAPPING[group] || group;
-          return (
-            <StyledGroupChip
-              key={group}
-              isSelected={selectedGroup === group}
-              onClick={() => {
-                setSelectedGroup(group);
-                setCurrentContact(null);
-                setIsCallActive(false);
-              }}
-            >
-              {shortName}
-            </StyledGroupChip>
-          );
-        })}
-      </StyledGroupPicker>
+      <PageHeader title="Call Station" Icon={IconPhone} />
+      <StyledContent>
+        <StyledGroupTabs>
+          {availableGroups.map((group) => (
+            <MainButton
+              key={group.id}
+              title={group.label}
+              variant={selectedGroup === group.id ? 'primary' : 'secondary'}
+              onClick={() => handleGroupChange(group.id)}
+            />
+          ))}
+        </StyledGroupTabs>
 
-      {isLoading ? (
-        <StyledEmptyState>Loading...</StyledEmptyState>
-      ) : !currentContact ? (
-        <StyledEmptyState>No contacts in this group</StyledEmptyState>
-      ) : (
-        <>
-          <StyledTheater>
-            <StyledContactName>{currentContact.name}</StyledContactName>
-            <StyledContactPhone>{currentContact.phone}</StyledContactPhone>
-            {currentContact.notes && (
-              <StyledContactReason>{currentContact.notes}</StyledContactReason>
-            )}
+        {isLoading ? (
+          <div>Loading...</div>
+        ) : !currentContact ? (
+          <div>No contacts in this group</div>
+        ) : (
+          <>
+            <StyledPersonPanel>
+              <StyledPersonHeader>
+                <StyledPersonName>{displayName}</StyledPersonName>
+                <StyledFieldValue>{currentContact.phone}</StyledFieldValue>
+              </StyledPersonHeader>
 
-            {!isCallActive ? (
-              <StyledCallButton>
-                <MainButton
-                  title="Dial"
-                  Icon={IconPhone}
-                  onClick={handleStartCall}
-                />
-              </StyledCallButton>
-            ) : (
-              <StyledDispositionButtons>
-                <StyledDispositionButton
-                  onClick={() => handleFinishCall('Connected')}
-                >
-                  Connected
-                </StyledDispositionButton>
-                <StyledDispositionButton
-                  onClick={() => handleFinishCall('Voicemail')}
-                >
-                  Voicemail
-                </StyledDispositionButton>
-                <StyledDispositionButton
-                  onClick={() => handleFinishCall('No Answer')}
-                >
-                  No Answer
-                </StyledDispositionButton>
-                <StyledDispositionButton
-                  onClick={() => handleFinishCall('Busy')}
-                >
-                  Busy
-                </StyledDispositionButton>
-                <StyledDispositionButton
-                  onClick={() => handleFinishCall('Wrong Number')}
-                >
-                  Wrong Number
-                </StyledDispositionButton>
-              </StyledDispositionButtons>
-            )}
-          </StyledTheater>
+              <StyledFieldRow>
+                {currentPerson?.company?.name && (
+                  <StyledField>
+                    <StyledFieldLabel>Brokerage</StyledFieldLabel>
+                    <StyledFieldValue>
+                      {currentPerson.company.name}
+                    </StyledFieldValue>
+                  </StyledField>
+                )}
+                {currentPerson?.tier && (
+                  <StyledField>
+                    <StyledFieldLabel>Tier</StyledFieldLabel>
+                    <StyledFieldValue>{currentPerson.tier}</StyledFieldValue>
+                  </StyledField>
+                )}
+              </StyledFieldRow>
 
-          <StyledQueueSection>
-            <StyledQueueHeader>{notDoneCount} left</StyledQueueHeader>
-            <StyledQueueList>
-              {filteredQueue.map((item, index) => (
-                <StyledQueueItem
-                  key={`${item.phone}-${index}`}
-                  isDone={item.done}
-                  onClick={() => handleQueueItemClick(item)}
-                >
-                  {item.name}
-                </StyledQueueItem>
-              ))}
-            </StyledQueueList>
-          </StyledQueueSection>
-        </>
-      )}
-    </StyledContainer>
+              <StyledFieldRow>
+                {currentPerson?.outreachStatus && (
+                  <StyledField>
+                    <StyledFieldLabel>Outreach Status</StyledFieldLabel>
+                    <StyledFieldValue>
+                      {currentPerson.outreachStatus}
+                    </StyledFieldValue>
+                  </StyledField>
+                )}
+                {currentPerson?.lastTouch && (
+                  <StyledField>
+                    <StyledFieldLabel>Last Touch</StyledFieldLabel>
+                    <StyledFieldValue>
+                      {currentPerson.lastTouch}
+                    </StyledFieldValue>
+                  </StyledField>
+                )}
+              </StyledFieldRow>
+
+              {currentPerson?.notes && (
+                <StyledNotesField>
+                  <StyledFieldLabel>Notes</StyledFieldLabel>
+                  <StyledFieldValue>{currentPerson.notes}</StyledFieldValue>
+                </StyledNotesField>
+              )}
+
+              <StyledSecondaryFields>
+                {currentPerson?.linkedinLink?.primaryLinkUrl && (
+                  <StyledLinkedInLink
+                    href={currentPerson.linkedinLink.primaryLinkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <IconBrandLinkedin size={16} />
+                    LinkedIn
+                  </StyledLinkedInLink>
+                )}
+                {currentPerson?.phones?.additionalPhones &&
+                  currentPerson.phones.additionalPhones.length > 0 && (
+                    <StyledField>
+                      <StyledFieldLabel>Additional Phones</StyledFieldLabel>
+                      <StyledFieldValue>
+                        {currentPerson.phones.additionalPhones.join(', ')}
+                      </StyledFieldValue>
+                    </StyledField>
+                  )}
+              </StyledSecondaryFields>
+
+              <StyledActions>
+                {!isCallActive ? (
+                  <MainButton
+                    title="Dial"
+                    Icon={IconPhone}
+                    onClick={handleStartCall}
+                  />
+                ) : (
+                  <>
+                    <MainButton
+                      title="Connected"
+                      onClick={() => handleFinishCall('Connected')}
+                    />
+                    <MainButton
+                      title="Voicemail"
+                      onClick={() => handleFinishCall('Voicemail')}
+                    />
+                    <MainButton
+                      title="No Answer"
+                      onClick={() => handleFinishCall('No Answer')}
+                    />
+                    <MainButton
+                      title="Busy"
+                      onClick={() => handleFinishCall('Busy')}
+                    />
+                    <MainButton
+                      title="Wrong Number"
+                      onClick={() => handleFinishCall('Wrong Number')}
+                    />
+                  </>
+                )}
+              </StyledActions>
+            </StyledPersonPanel>
+
+            <StyledQueueSection>
+              <StyledQueueHeader>{notDoneCount} left</StyledQueueHeader>
+              <StyledQueueList>
+                {filteredQueue.map((item, index) => (
+                  <StyledQueueItem
+                    key={`${item.phone}-${index}`}
+                    isDone={item.done}
+                    onClick={() => handleQueueItemClick(item)}
+                  >
+                    {item.name}
+                  </StyledQueueItem>
+                ))}
+              </StyledQueueList>
+            </StyledQueueSection>
+          </>
+        )}
+      </StyledContent>
+    </PageContainer>
   );
 };
