@@ -19,6 +19,13 @@ import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
 import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 
+import {
+  BRIDGE_BASE_URL,
+  CALL_BRIDGE_OFFLINE_COPY,
+  isCallBridgeHealthy,
+  startCallOnBridge,
+} from './start-call-on-bridge';
+
 type Person = {
   __typename: string;
   id: string;
@@ -57,8 +64,6 @@ type CallState = {
   startTime?: number;
   person?: Person;
 };
-
-const BRIDGE_BASE_URL = 'http://127.0.0.1:8787';
 
 const DISPOSITION_MAPPING: Record<string, string> = {
   Connected: 'REPLIED',
@@ -299,6 +304,7 @@ export const CallStationPage = () => {
   const [currentPerson, setCurrentPerson] = useState<Person | null>(null);
   const [callState, setCallState] = useState<CallState>({ active: false });
   const [callTimer, setCallTimer] = useState<number>(0);
+  const [isBridgeOffline, setIsBridgeOffline] = useState(false);
   const [completedCallIds, setCompletedCallIds] = useState<Set<string>>(
     new Set(),
   );
@@ -402,29 +408,45 @@ export const CallStationPage = () => {
     };
   }, [callState.active, callState.startTime]);
 
+  useEffect(() => {
+    const abortController = new AbortController();
+
+    const checkBridgeHealth = async () => {
+      const isHealthy = await isCallBridgeHealthy(abortController.signal);
+
+      if (!abortController.signal.aborted && !isHealthy) {
+        setIsBridgeOffline(true);
+      }
+    };
+
+    void checkBridgeHealth();
+
+    return () => {
+      abortController.abort();
+    };
+  }, []);
+
   const handleStartCall = async () => {
     if (!currentPerson?.phones?.primaryPhoneNumber) return;
 
-    try {
-      await fetch(`${BRIDGE_BASE_URL}/call/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: currentPerson.phones.primaryPhoneNumber,
-          name: `${currentPerson.name.firstName} ${currentPerson.name.lastName}`,
-          brokerage: getBrokerage(currentPerson),
-        }),
-      });
+    const didStart = await startCallOnBridge({
+      phone: currentPerson.phones.primaryPhoneNumber,
+      name: `${currentPerson.name.firstName} ${currentPerson.name.lastName}`,
+      brokerage: getBrokerage(currentPerson),
+    });
 
-      setCallState({
-        active: true,
-        startTime: Date.now(),
-        person: currentPerson,
-      });
-      setCallTimer(0);
-    } catch {
-      // Silently handle error
+    if (!didStart) {
+      setIsBridgeOffline(true);
+      return;
     }
+
+    setIsBridgeOffline(false);
+    setCallState({
+      active: true,
+      startTime: Date.now(),
+      person: currentPerson,
+    });
+    setCallTimer(0);
   };
 
   const handleFinishCall = async (dispositionLabel: string) => {
@@ -663,7 +685,9 @@ export const CallStationPage = () => {
               <StyledActions>
                 {!callState.active ? (
                   <MainButton
-                    title="Dial"
+                    title={
+                      isBridgeOffline ? CALL_BRIDGE_OFFLINE_COPY : 'Dial'
+                    }
                     Icon={IconPhone}
                     onClick={handleStartCall}
                     disabled={!currentPerson.phones?.primaryPhoneNumber}
