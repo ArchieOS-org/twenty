@@ -1,5 +1,5 @@
 import { styled } from '@linaria/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IconPhone, IconBrandLinkedin, IconCircle } from 'twenty-ui/icon';
 import { MainButton } from 'twenty-ui/input';
 import { Chip, ChipVariant } from 'twenty-ui/data-display';
@@ -10,12 +10,14 @@ import {
   AnimatedPlaceholderEmptyTextContainer,
   AnimatedPlaceholderEmptyTitle,
 } from 'twenty-ui/feedback';
+import { QUERY_MAX_RECORDS } from 'twenty-shared/constants';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
+import { useLazyFetchAllRecords } from '@/object-record/hooks/useLazyFetchAllRecords';
 import { useCreateOneRecord } from '@/object-record/hooks/useCreateOneRecord';
 import { useUpdateOneRecord } from '@/object-record/hooks/useUpdateOneRecord';
 
@@ -65,6 +67,7 @@ type CallRecord = {
 
 type CallState = {
   active: boolean;
+  awaitingDisposition: boolean;
   startTime?: number;
   person?: Person;
 };
@@ -306,17 +309,22 @@ export const CallStationPage = () => {
   const [filterHasPhone, setFilterHasPhone] = useState<boolean>(true);
   const [filterTesting, setFilterTesting] = useState<boolean>(false);
   const [currentPerson, setCurrentPerson] = useState<Person | null>(null);
-  const [callState, setCallState] = useState<CallState>({ active: false });
+  const [callState, setCallState] = useState<CallState>({ active: false, awaitingDisposition: false });
   const [callTimer, setCallTimer] = useState<number>(0);
   const [isBridgeOffline, setIsBridgeOffline] = useState(false);
   const [completedCallIds, setCompletedCallIds] = useState<Set<string>>(
     new Set(),
   );
+  const [allPeople, setAllPeople] = useState<Person[]>([]);
+  const [hasLoadedPeople, setHasLoadedPeople] = useState(false);
 
-  const { records: allPeople, loading: loadingPeople } =
-    useFindManyRecords<Person>({
+  // Chips and queue are computed client-side; one GraphQL page truncates
+  // Solo / Emailed / Testing. useLazyFetchAllRecords pages until the end.
+  const { fetchAllRecords, isDownloading: isDownloadingPeople } =
+    useLazyFetchAllRecords({
       objectNameSingular: CoreObjectNameSingular.Person,
       filter: {},
+      limit: QUERY_MAX_RECORDS,
       recordGqlFields: {
         id: true,
         name: true,
@@ -334,6 +342,37 @@ export const CallStationPage = () => {
         soloVsTeam: true,
       },
     });
+
+  const loadingPeople = isDownloadingPeople || !hasLoadedPeople;
+
+  // fetchAllRecords identity is not stable — do not put it in effect deps
+  // or React #185 (max update depth) loops on mount.
+  // oxlint-disable-next-line twenty/no-state-useref
+  const fetchAllRecordsRef = useRef(fetchAllRecords);
+  fetchAllRecordsRef.current = fetchAllRecords;
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadAllPeople = async () => {
+      const records = await fetchAllRecordsRef.current();
+
+      if (isCancelled) {
+        return;
+      }
+
+      setAllPeople(records as Person[]);
+      setHasLoadedPeople(true);
+    };
+
+    void loadAllPeople();
+
+    return () => {
+      isCancelled = true;
+    };
+    // Load People once on mount. Do not depend on fetchAllRecords.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { createOneRecord: createCall } = useCreateOneRecord({
     objectNameSingular: 'call' as CoreObjectNameSingular,
@@ -450,6 +489,7 @@ export const CallStationPage = () => {
     setIsBridgeOffline(false);
     setCallState({
       active: true,
+      awaitingDisposition: false,
       startTime: Date.now(),
       person: currentPerson,
     });
@@ -493,7 +533,7 @@ export const CallStationPage = () => {
         });
       }
 
-      setCallState({ active: false });
+      setCallState({ active: false, awaitingDisposition: false });
       setCallTimer(0);
       setCompletedCallIds((prev) => new Set(prev).add(callState.person!.id));
 
@@ -511,8 +551,19 @@ export const CallStationPage = () => {
 
   const handlePersonClick = (person: Person) => {
     setCurrentPerson(person);
-    setCallState({ active: false });
+    setCallState({ active: false, awaitingDisposition: false });
     setCallTimer(0);
+  };
+
+  const handleCallEnded = () => {
+    if (!callState.active) {
+      return;
+    }
+
+    setCallState((prev) => ({
+      ...prev,
+      awaitingDisposition: true,
+    }));
   };
 
   const handleTestingToggle = () => {
@@ -604,7 +655,9 @@ export const CallStationPage = () => {
               {callState.active && (
                 <StyledCallingBanner>
                   <IconCircle size={12} />
-                  Calling · recording · {formatTimer(callTimer)}
+                  {callState.awaitingDisposition
+                    ? `Call ended · pick disposition · ${formatTimer(callTimer)}`
+                    : `Calling · recording · ${formatTimer(callTimer)}`}
                 </StyledCallingBanner>
               )}
 
@@ -696,6 +749,11 @@ export const CallStationPage = () => {
                     Icon={IconPhone}
                     onClick={handleStartCall}
                     disabled={!currentPerson.phones?.primaryPhoneNumber}
+                  />
+                ) : !callState.awaitingDisposition ? (
+                  <MainButton
+                    title="I've ended the call"
+                    onClick={handleCallEnded}
                   />
                 ) : (
                   <>
