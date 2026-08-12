@@ -14,7 +14,7 @@ type QueueItem = {
   done: boolean;
 };
 
-const BRIDGE_BASE_URL = 'http://localhost:8765';
+const BRIDGE_BASE_URL = 'http://127.0.0.1:8787';
 const QUEUE_PATH =
   '/Users/noahdeskin/.hermes/data/austin-realtors/call_queue.csv';
 
@@ -22,6 +22,14 @@ const GROUP_MAPPING: Record<string, string> = {
   'A - Talk first': 'A',
   'B - Backup': 'B',
   'Team member': 'Team',
+};
+
+const DISPOSITION_MAPPING: Record<string, string> = {
+  Connected: 'REPLIED',
+  Voicemail: 'VOICEMAIL',
+  'No Answer': 'NO_ANSWER',
+  'Wrong Number': 'WRONG_NUMBER',
+  Busy: 'BUSY',
 };
 
 const StyledContainer = styled.div`
@@ -229,23 +237,39 @@ export const CallStationPage = () => {
     }
   }, [notDoneFilteredQueue, currentContact]);
 
-  const handleStartCall = () => {
-    if (currentContact) {
-      setIsCallActive(true);
-    }
-  };
-
-  const handleFinishCall = async (disposition: string) => {
+  const handleStartCall = async () => {
     if (!currentContact) return;
 
     try {
-      await fetch(`${BRIDGE_BASE_URL}/queue/finish`, {
+      await fetch(`${BRIDGE_BASE_URL}/call/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          queue: QUEUE_PATH,
           phone: currentContact.phone,
+          name: currentContact.name,
+          brokerage: currentContact.brokerage,
+        }),
+      });
+
+      setIsCallActive(true);
+    } catch {
+      // Silently handle error
+    }
+  };
+
+  const handleFinishCall = async (dispositionLabel: string) => {
+    if (!currentContact) return;
+
+    const disposition =
+      DISPOSITION_MAPPING[dispositionLabel] || dispositionLabel;
+
+    try {
+      await fetch(`${BRIDGE_BASE_URL}/call/finish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           disposition,
+          notes: currentContact.notes || '',
         }),
       });
 
@@ -333,6 +357,11 @@ export const CallStationPage = () => {
                   onClick={() => handleFinishCall('No Answer')}
                 >
                   No Answer
+                </StyledDispositionButton>
+                <StyledDispositionButton
+                  onClick={() => handleFinishCall('Busy')}
+                >
+                  Busy
                 </StyledDispositionButton>
                 <StyledDispositionButton
                   onClick={() => handleFinishCall('Wrong Number')}
