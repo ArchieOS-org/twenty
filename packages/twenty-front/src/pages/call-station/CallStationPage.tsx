@@ -4,7 +4,6 @@ import { IconPhone } from 'twenty-ui/icon';
 import { MainButton } from 'twenty-ui/input';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
-import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 
 type QueueItem = {
@@ -19,160 +18,169 @@ const BRIDGE_BASE_URL = 'http://localhost:8765';
 const QUEUE_PATH =
   '/Users/noahdeskin/.hermes/data/austin-realtors/call_queue.csv';
 
+const GROUP_MAPPING: Record<string, string> = {
+  'A - Talk first': 'A',
+  'B - Backup': 'B',
+  'Team member': 'Team',
+};
+
 const StyledContainer = styled.div`
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 100%;
-`;
-
-const StyledContent = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${themeCssVariables.spacing[4]};
-  overflow-y: auto;
-  padding: ${themeCssVariables.spacing[4]};
+  height: 100vh;
+  overflow: hidden;
 `;
 
 const StyledGroupPicker = styled.div`
+  align-items: center;
+  background: ${themeCssVariables.background.primary};
+  border-bottom: 1px solid ${themeCssVariables.border.color.medium};
   display: flex;
-  flex-wrap: wrap;
-  gap: ${themeCssVariables.spacing[2]};
+  gap: ${themeCssVariables.spacing[3]};
+  padding: ${themeCssVariables.spacing[4]};
 `;
 
 const StyledGroupChip = styled.button<{ isSelected: boolean }>`
   background: ${({ isSelected }) =>
-    isSelected
-      ? themeCssVariables.background.primary
-      : themeCssVariables.background.secondary};
-  border: 1px solid
+    isSelected ? themeCssVariables.color.blue : 'transparent'};
+  border: 2px solid
     ${({ isSelected }) =>
       isSelected
-        ? themeCssVariables.border.color.strong
+        ? themeCssVariables.color.blue
         : themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.sm};
+  border-radius: ${themeCssVariables.border.radius.md};
   color: ${({ isSelected }) =>
     isSelected
       ? themeCssVariables.font.color.inverted
       : themeCssVariables.font.color.primary};
   cursor: pointer;
-  font-size: ${themeCssVariables.font.size.sm};
-  font-weight: ${themeCssVariables.font.weight.medium};
-  padding: ${themeCssVariables.spacing[2]} ${themeCssVariables.spacing[3]};
-  transition: all 0.15s ease;
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.semiBold};
+  min-width: 80px;
+  padding: ${themeCssVariables.spacing[3]} ${themeCssVariables.spacing[4]};
+  transition: all 0.2s ease;
 
   &:hover {
     background: ${({ isSelected }) =>
       isSelected
-        ? themeCssVariables.background.primary
-        : themeCssVariables.background.tertiary};
+        ? themeCssVariables.color.blue
+        : themeCssVariables.background.transparent.light};
   }
+`;
+
+const StyledTheater = styled.div`
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: ${themeCssVariables.spacing[6]};
+  justify-content: center;
+  min-height: 400px;
+  padding: ${themeCssVariables.spacing[8]} ${themeCssVariables.spacing[6]};
+`;
+
+const StyledContactName = styled.div`
+  color: ${themeCssVariables.font.color.primary};
+  font-size: 48px;
+  font-weight: ${themeCssVariables.font.weight.semiBold};
+  letter-spacing: -0.02em;
+  text-align: center;
+`;
+
+const StyledContactPhone = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.xl};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  margin-top: -${themeCssVariables.spacing[3]};
+`;
+
+const StyledContactReason = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.md};
+  font-style: italic;
+  margin-top: -${themeCssVariables.spacing[2]};
+`;
+
+const StyledCallButton = styled.div`
+  margin-top: ${themeCssVariables.spacing[4]};
+  min-width: 200px;
+`;
+
+const StyledDispositionButtons = styled.div`
+  display: flex;
+  gap: ${themeCssVariables.spacing[3]};
+  margin-top: ${themeCssVariables.spacing[4]};
+`;
+
+const StyledDispositionButton = styled.button`
+  background: ${themeCssVariables.background.secondary};
+  border: 2px solid ${themeCssVariables.border.color.medium};
+  border-radius: ${themeCssVariables.border.radius.md};
+  color: ${themeCssVariables.font.color.primary};
+  cursor: pointer;
+  font-size: ${themeCssVariables.font.size.md};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  padding: ${themeCssVariables.spacing[3]} ${themeCssVariables.spacing[5]};
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${themeCssVariables.background.tertiary};
+    border-color: ${themeCssVariables.border.color.strong};
+  }
+`;
+
+const StyledQueueSection = styled.div`
+  border-top: 1px solid ${themeCssVariables.border.color.light};
+  flex: 1;
+  overflow-y: auto;
+  padding: ${themeCssVariables.spacing[4]};
+`;
+
+const StyledQueueHeader = styled.div`
+  color: ${themeCssVariables.font.color.tertiary};
+  font-size: ${themeCssVariables.font.size.sm};
+  font-weight: ${themeCssVariables.font.weight.medium};
+  margin-bottom: ${themeCssVariables.spacing[3]};
+  text-transform: uppercase;
 `;
 
 const StyledQueueList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: ${themeCssVariables.spacing[2]};
-`;
-
-const StyledQueueHeader = styled.div`
-  border-bottom: 1px solid ${themeCssVariables.border.color.medium};
-  color: ${themeCssVariables.font.color.primary};
-  font-size: ${themeCssVariables.font.size.md};
-  font-weight: ${themeCssVariables.font.weight.semiBold};
-  padding-bottom: ${themeCssVariables.spacing[2]};
-`;
-
-const StyledQueueItemRow = styled.div<{ isDone: boolean; isActive: boolean }>`
-  background: ${({ isActive, isDone }) =>
-    isActive
-      ? themeCssVariables.background.tertiary
-      : isDone
-        ? themeCssVariables.background.transparent.lighter
-        : themeCssVariables.background.secondary};
-  border: 1px solid
-    ${({ isActive }) =>
-      isActive
-        ? themeCssVariables.border.color.strong
-        : themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.sm};
-  cursor: pointer;
-  display: grid;
-  gap: ${themeCssVariables.spacing[2]};
-  grid-template-columns: 1fr 150px 1fr;
-  opacity: ${({ isDone }) => (isDone ? 0.5 : 1)};
-  padding: ${themeCssVariables.spacing[3]};
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: ${themeCssVariables.background.tertiary};
-  }
-`;
-
-const StyledItemText = styled.div`
-  color: ${themeCssVariables.font.color.primary};
-  font-size: ${themeCssVariables.font.size.sm};
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const StyledCurrentContactCard = styled.div`
-  background: ${themeCssVariables.background.secondary};
-  border: 1px solid ${themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.md};
-  display: flex;
-  flex-direction: column;
-  gap: ${themeCssVariables.spacing[3]};
-  padding: ${themeCssVariables.spacing[4]};
-`;
-
-const StyledContactInfo = styled.div`
-  display: flex;
-  flex-direction: column;
   gap: ${themeCssVariables.spacing[1]};
 `;
 
-const StyledContactName = styled.div`
-  color: ${themeCssVariables.font.color.primary};
-  font-size: ${themeCssVariables.font.size.lg};
-  font-weight: ${themeCssVariables.font.weight.semiBold};
-`;
-
-const StyledContactDetail = styled.div`
-  color: ${themeCssVariables.font.color.secondary};
+const StyledQueueItem = styled.div<{ isDone: boolean }>`
+  color: ${({ isDone }) =>
+    isDone
+      ? themeCssVariables.font.color.tertiary
+      : themeCssVariables.font.color.secondary};
+  cursor: ${({ isDone }) => (isDone ? 'default' : 'pointer')};
   font-size: ${themeCssVariables.font.size.sm};
-`;
-
-const StyledButtonGroup = styled.div`
-  display: flex;
-  gap: ${themeCssVariables.spacing[2]};
-`;
-
-const StyledDispositionButtons = styled.div`
-  display: grid;
-  gap: ${themeCssVariables.spacing[2]};
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-`;
-
-const StyledDispositionButton = styled.button`
-  background: ${themeCssVariables.background.tertiary};
-  border: 1px solid ${themeCssVariables.border.color.medium};
-  border-radius: ${themeCssVariables.border.radius.sm};
-  color: ${themeCssVariables.font.color.primary};
-  cursor: pointer;
-  font-size: ${themeCssVariables.font.size.sm};
+  opacity: ${({ isDone }) => (isDone ? 0.4 : 1)};
   padding: ${themeCssVariables.spacing[2]};
-  transition: all 0.15s ease;
+  text-decoration: ${({ isDone }) => (isDone ? 'line-through' : 'none')};
+  transition: color 0.15s ease;
 
   &:hover {
-    background: ${themeCssVariables.background.quaternary};
+    color: ${({ isDone }) =>
+      isDone
+        ? themeCssVariables.font.color.tertiary
+        : themeCssVariables.font.color.primary};
   }
+`;
+
+const StyledEmptyState = styled.div`
+  align-items: center;
+  color: ${themeCssVariables.font.color.tertiary};
+  display: flex;
+  font-size: ${themeCssVariables.font.size.lg};
+  height: 200px;
+  justify-content: center;
 `;
 
 export const CallStationPage = () => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>('All');
+  const [selectedGroup, setSelectedGroup] = useState<string>('A - Talk first');
   const [currentContact, setCurrentContact] = useState<QueueItem | null>(null);
   const [isCallActive, setIsCallActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -203,42 +211,17 @@ export const CallStationPage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const deriveGroups = (): string[] => {
-    const uniqueGroups = new Set<string>();
-    queue.forEach((item) => {
-      const group = item.notes?.trim() || '';
-      uniqueGroups.add(group);
-    });
-    return ['All', ...Array.from(uniqueGroups).sort()];
-  };
-
   const filterQueueByGroup = (items: QueueItem[]): QueueItem[] => {
-    if (selectedGroup === 'All') {
-      return items;
-    }
-
     return items.filter((item) => {
-      const itemGroup = item.notes?.trim() || '';
-      if (selectedGroup === 'Ungrouped') {
-        return itemGroup === '';
-      }
-      return itemGroup === selectedGroup;
+      const itemNotes = item.notes?.trim() || '';
+      return itemNotes === selectedGroup;
     });
   };
 
   const filteredQueue = filterQueueByGroup(queue);
   const notDoneFilteredQueue = filteredQueue.filter((item) => !item.done);
-  const groups = deriveGroups();
 
-  useEffect(() => {
-    if (!groups.includes(selectedGroup)) {
-      if (groups.includes('A - Talk first')) {
-        setSelectedGroup('A - Talk first');
-      } else {
-        setSelectedGroup('All');
-      }
-    }
-  }, [queue, selectedGroup, groups]);
+  const availableGroups = ['A - Talk first', 'B - Backup', 'Team member'];
 
   useEffect(() => {
     if (notDoneFilteredQueue.length > 0 && !currentContact) {
@@ -267,14 +250,22 @@ export const CallStationPage = () => {
       });
 
       setIsCallActive(false);
-      setCurrentContact(null);
       await fetchQueue();
+
+      const updatedNotDoneQueue = notDoneFilteredQueue.filter(
+        (item) => item.phone !== currentContact.phone,
+      );
+      if (updatedNotDoneQueue.length > 0) {
+        setCurrentContact(updatedNotDoneQueue[0]);
+      } else {
+        setCurrentContact(null);
+      }
     } catch {
       // Silently handle error
     }
   };
 
-  const handleRowClick = (item: QueueItem) => {
+  const handleQueueItemClick = (item: QueueItem) => {
     if (!item.done) {
       setCurrentContact(item);
       setIsCallActive(false);
@@ -283,101 +274,91 @@ export const CallStationPage = () => {
 
   const notDoneCount = notDoneFilteredQueue.length;
 
-  const displayGroups = groups.map((group) => {
-    if (group === '') return 'Ungrouped';
-    return group;
-  });
-
   return (
     <StyledContainer>
       <PageTitle title="Call Station" />
-      <PageHeader title="Call Station" Icon={IconPhone} />
-      <StyledContent>
-        <StyledGroupPicker>
-          {displayGroups.map((group) => {
-            const actualGroup = group === 'Ungrouped' ? '' : group;
-            return (
-              <StyledGroupChip
-                key={group}
-                isSelected={selectedGroup === actualGroup}
-                onClick={() => setSelectedGroup(actualGroup)}
-              >
-                {group}
-              </StyledGroupChip>
-            );
-          })}
-        </StyledGroupPicker>
+      <StyledGroupPicker>
+        {availableGroups.map((group) => {
+          const shortName = GROUP_MAPPING[group] || group;
+          return (
+            <StyledGroupChip
+              key={group}
+              isSelected={selectedGroup === group}
+              onClick={() => {
+                setSelectedGroup(group);
+                setCurrentContact(null);
+                setIsCallActive(false);
+              }}
+            >
+              {shortName}
+            </StyledGroupChip>
+          );
+        })}
+      </StyledGroupPicker>
 
-        {currentContact && (
-          <StyledCurrentContactCard>
-            <StyledContactInfo>
-              <StyledContactName>{currentContact.name}</StyledContactName>
-              <StyledContactDetail>{currentContact.phone}</StyledContactDetail>
-              <StyledContactDetail>
-                {currentContact.brokerage}
-              </StyledContactDetail>
-              {currentContact.notes && (
-                <StyledContactDetail>
-                  Notes: {currentContact.notes}
-                </StyledContactDetail>
-              )}
-            </StyledContactInfo>
+      {isLoading ? (
+        <StyledEmptyState>Loading...</StyledEmptyState>
+      ) : !currentContact ? (
+        <StyledEmptyState>No contacts in this group</StyledEmptyState>
+      ) : (
+        <>
+          <StyledTheater>
+            <StyledContactName>{currentContact.name}</StyledContactName>
+            <StyledContactPhone>{currentContact.phone}</StyledContactPhone>
+            {currentContact.notes && (
+              <StyledContactReason>{currentContact.notes}</StyledContactReason>
+            )}
 
             {!isCallActive ? (
-              <StyledButtonGroup>
-                <MainButton title="Start Call" onClick={handleStartCall} />
-              </StyledButtonGroup>
+              <StyledCallButton>
+                <MainButton
+                  title="Dial"
+                  Icon={IconPhone}
+                  onClick={handleStartCall}
+                />
+              </StyledCallButton>
             ) : (
-              <>
-                <StyledDispositionButtons>
-                  <StyledDispositionButton
-                    onClick={() => handleFinishCall('Connected')}
-                  >
-                    Connected
-                  </StyledDispositionButton>
-                  <StyledDispositionButton
-                    onClick={() => handleFinishCall('Voicemail')}
-                  >
-                    Voicemail
-                  </StyledDispositionButton>
-                  <StyledDispositionButton
-                    onClick={() => handleFinishCall('No Answer')}
-                  >
-                    No Answer
-                  </StyledDispositionButton>
-                  <StyledDispositionButton
-                    onClick={() => handleFinishCall('Wrong Number')}
-                  >
-                    Wrong Number
-                  </StyledDispositionButton>
-                </StyledDispositionButtons>
-              </>
+              <StyledDispositionButtons>
+                <StyledDispositionButton
+                  onClick={() => handleFinishCall('Connected')}
+                >
+                  Connected
+                </StyledDispositionButton>
+                <StyledDispositionButton
+                  onClick={() => handleFinishCall('Voicemail')}
+                >
+                  Voicemail
+                </StyledDispositionButton>
+                <StyledDispositionButton
+                  onClick={() => handleFinishCall('No Answer')}
+                >
+                  No Answer
+                </StyledDispositionButton>
+                <StyledDispositionButton
+                  onClick={() => handleFinishCall('Wrong Number')}
+                >
+                  Wrong Number
+                </StyledDispositionButton>
+              </StyledDispositionButtons>
             )}
-          </StyledCurrentContactCard>
-        )}
+          </StyledTheater>
 
-        <StyledQueueList>
-          <StyledQueueHeader>Queue · {notDoneCount} left</StyledQueueHeader>
-          {isLoading ? (
-            <StyledItemText>Loading queue...</StyledItemText>
-          ) : filteredQueue.length === 0 ? (
-            <StyledItemText>No contacts in this group</StyledItemText>
-          ) : (
-            filteredQueue.map((item, index) => (
-              <StyledQueueItemRow
-                key={`${item.phone}-${index}`}
-                isDone={item.done}
-                isActive={currentContact?.phone === item.phone && !item.done}
-                onClick={() => handleRowClick(item)}
-              >
-                <StyledItemText>{item.name}</StyledItemText>
-                <StyledItemText>{item.phone}</StyledItemText>
-                <StyledItemText>{item.brokerage}</StyledItemText>
-              </StyledQueueItemRow>
-            ))
-          )}
-        </StyledQueueList>
-      </StyledContent>
+          <StyledQueueSection>
+            <StyledQueueHeader>{notDoneCount} left</StyledQueueHeader>
+            <StyledQueueList>
+              {filteredQueue.map((item, index) => (
+                <StyledQueueItem
+                  key={`${item.phone}-${index}`}
+                  isDone={item.done}
+                  onClick={() => handleQueueItemClick(item)}
+                >
+                  {item.name}
+                </StyledQueueItem>
+              ))}
+            </StyledQueueList>
+          </StyledQueueSection>
+        </>
+      )}
     </StyledContainer>
   );
 };
