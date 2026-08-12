@@ -2,6 +2,7 @@ import { styled } from '@linaria/react';
 import { useCallback, useEffect, useState } from 'react';
 import { IconPhone, IconBrandLinkedin } from 'twenty-ui/icon';
 import { MainButton } from 'twenty-ui/input';
+import { H2Title } from 'twenty-ui/typography';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 
@@ -9,7 +10,6 @@ import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PageTitle } from '@/ui/utilities/page-title/components/PageTitle';
 import { useFindManyRecords } from '@/object-record/hooks/useFindManyRecords';
-import { H2Title } from 'twenty-ui/display';
 
 type QueueItem = {
   name: string;
@@ -44,6 +44,11 @@ const DISPOSITION_MAPPING: Record<string, string> = {
   Busy: 'BUSY',
 };
 
+const normalizePhone = (phone: string | undefined): string => {
+  if (!phone) return '';
+  return phone.replace(/\D/g, '');
+};
+
 const StyledContent = styled.div`
   display: flex;
   flex-direction: column;
@@ -70,8 +75,10 @@ const StyledPersonHeader = styled.div`
   padding-bottom: ${themeCssVariables.spacing[4]};
 `;
 
-const StyledPersonName = styled(H2Title)`
-  margin-bottom: ${themeCssVariables.spacing[1]};
+const StyledPersonPhone = styled.div`
+  color: ${themeCssVariables.font.color.secondary};
+  font-size: ${themeCssVariables.font.size.md};
+  margin-top: ${themeCssVariables.spacing[2]};
 `;
 
 const StyledFieldRow = styled.div`
@@ -237,9 +244,13 @@ export const CallStationPage = () => {
       const nextContact = notDoneFilteredQueue[0];
       setCurrentContact(nextContact);
 
-      const matchingPerson = people.find(
-        (p) => p.phones?.primaryPhoneNumber === nextContact.phone,
-      );
+      const normalizedQueuePhone = normalizePhone(nextContact.phone);
+      const matchingPerson = people.find((p) => {
+        const normalizedPersonPhone = normalizePhone(
+          p.phones?.primaryPhoneNumber,
+        );
+        return normalizedPersonPhone === normalizedQueuePhone;
+      });
       setCurrentPerson(matchingPerson || null);
     }
   }, [notDoneFilteredQueue, currentContact, people]);
@@ -290,9 +301,13 @@ export const CallStationPage = () => {
         const nextContact = updatedNotDoneQueue[0];
         setCurrentContact(nextContact);
 
-        const matchingPerson = people.find(
-          (p) => p.phones?.primaryPhoneNumber === nextContact.phone,
-        );
+        const normalizedQueuePhone = normalizePhone(nextContact.phone);
+        const matchingPerson = people.find((p) => {
+          const normalizedPersonPhone = normalizePhone(
+            p.phones?.primaryPhoneNumber,
+          );
+          return normalizedPersonPhone === normalizedQueuePhone;
+        });
         setCurrentPerson(matchingPerson || null);
       } else {
         setCurrentContact(null);
@@ -306,9 +321,13 @@ export const CallStationPage = () => {
   const handleQueueItemClick = (item: QueueItem) => {
     if (!item.done) {
       setCurrentContact(item);
-      const matchingPerson = people.find(
-        (p) => p.phones?.primaryPhoneNumber === item.phone,
-      );
+      const normalizedQueuePhone = normalizePhone(item.phone);
+      const matchingPerson = people.find((p) => {
+        const normalizedPersonPhone = normalizePhone(
+          p.phones?.primaryPhoneNumber,
+        );
+        return normalizedPersonPhone === normalizedQueuePhone;
+      });
       setCurrentPerson(matchingPerson || null);
       setIsCallActive(false);
     }
@@ -350,8 +369,8 @@ export const CallStationPage = () => {
           <>
             <StyledPersonPanel>
               <StyledPersonHeader>
-                <StyledPersonName>{displayName}</StyledPersonName>
-                <StyledFieldValue>{currentContact.phone}</StyledFieldValue>
+                <H2Title title={displayName} />
+                <StyledPersonPhone>{currentContact.phone}</StyledPersonPhone>
               </StyledPersonHeader>
 
               <StyledFieldRow>
